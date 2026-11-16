@@ -45,8 +45,8 @@ declare global {
 }
 
 function newState(): FarmState {
-  const cols = 12;
-  const rows = 12;
+  const cols = 8;
+  const rows = 8;
   return {
     cols,
     rows,

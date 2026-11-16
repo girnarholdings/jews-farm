@@ -1,7 +1,7 @@
 import type { FarmState, Plot } from '../types';
 import { spendCoins } from './economy';
 
-export const BASE_SIZE = 12;
+export const BASE_SIZE = 8;
 
 export function expansionLevel(s: FarmState): number {
   return (s.cols - BASE_SIZE) / 2;

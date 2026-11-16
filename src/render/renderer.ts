@@ -6,9 +6,6 @@ import { cropStage, objectState } from '../game/systems/growth';
 import { drawFarmer } from './farmer';
 import { CROP_COLORS, TREE_FRUIT, ANIMAL_COLORS, BUILDING_COLORS, SHEEP_COLORS } from './palette';
 
-const GRASS_A = '#86b049';
-const GRASS_B = '#79a43f';
-const PLOWED = '#8a5a3b';
 const DECOR_COLORS: Record<string, string> = {
   israeli_flag: '#4a7ad0',
   hanukkiah: '#d4a017',
@@ -42,6 +39,7 @@ export class Renderer {
   camera = { x: 0, y: 0, zoom: 1 };
   private dpr = 1;
   private effects: Effect[] = [];
+  private lastState: FarmState | null = null;
 
   constructor(container: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -52,7 +50,10 @@ export class Renderer {
     if (!ctx) throw new Error('Canvas 2D unavailable');
     this.ctx = ctx;
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('resize', () => {
+      this.resize();
+      if (this.lastState) this.fit(this.lastState);
+    });
   }
 
   resize(): void {
@@ -82,15 +83,20 @@ export class Renderer {
   }
 
   fit(state: FarmState): void {
-    const tl = tileCenter(0, 0);
-    const br = tileCenter(state.cols - 1, state.rows - 1);
-    const cx = (tl.x + br.x) / 2;
-    const cy = (tl.y + br.y) / 2;
-    this.camera.x = this.viewWidth / 2 - cx * this.camera.zoom;
-    this.camera.y = this.viewHeight / 2 - cy * this.camera.zoom;
+    const hw = TILE_W / 2;
+    const hh = TILE_H / 2;
+    const minX = -state.rows * hw;
+    const maxX = state.cols * hw;
+    const minY = -hh;
+    const maxY = (state.cols + state.rows - 1) * hh;
+    const fit = Math.min(this.viewWidth / (maxX - minX), this.viewHeight / (maxY - minY)) * 0.94;
+    this.camera.zoom = Math.max(0.4, Math.min(1.2, fit));
+    this.camera.x = this.viewWidth / 2 - ((minX + maxX) / 2) * this.camera.zoom;
+    this.camera.y = this.viewHeight / 2 - ((minY + maxY) / 2) * this.camera.zoom;
   }
 
   render(state: FarmState, now: number): void {
+    this.lastState = state;
     const { ctx } = this;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.fillStyle = '#6b9b3a';
@@ -131,20 +137,37 @@ export class Renderer {
   }
 
   private drawGrass(col: number, row: number): void {
+    const c = tileCenter(col, row);
+    const even = (col + row) % 2 === 0;
+    const g = this.ctx.createLinearGradient(c.x, c.y - TILE_H / 2, c.x, c.y + TILE_H / 2);
+    g.addColorStop(0, even ? '#8cbf54' : '#82b64a');
+    g.addColorStop(1, even ? '#76a540' : '#6d9c39');
     this.beginDiamond(col, row);
-    this.ctx.fillStyle = (col + row) % 2 === 0 ? GRASS_A : GRASS_B;
+    this.ctx.fillStyle = g;
     this.ctx.fill();
-    this.ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+    this.ctx.strokeStyle = 'rgba(20,40,14,0.16)';
     this.ctx.lineWidth = 1;
     this.ctx.stroke();
   }
 
   private drawPlot(col: number, row: number, plot: Plot, now: number): void {
+    const c = tileCenter(col, row);
+    const g = this.ctx.createLinearGradient(c.x, c.y - TILE_H / 2, c.x, c.y + TILE_H / 2);
+    g.addColorStop(0, '#a06a48');
+    g.addColorStop(1, '#7c4e30');
     this.beginDiamond(col, row);
-    this.ctx.fillStyle = PLOWED;
+    this.ctx.fillStyle = g;
     this.ctx.fill();
-    this.ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+    this.ctx.strokeStyle = 'rgba(40,22,8,0.25)';
     this.ctx.stroke();
+    this.ctx.strokeStyle = 'rgba(60,36,16,0.28)';
+    this.ctx.lineWidth = 1;
+    for (let i = -1; i <= 1; i++) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(c.x - TILE_W / 2 + 10, c.y + i * 6);
+      this.ctx.lineTo(c.x + TILE_W / 2 - 10, c.y + i * 6);
+      this.ctx.stroke();
+    }
     if (plot.state === 'planted' && plot.cropId && plot.plantedAt != null) {
       const crop = CROPS[plot.cropId];
       if (crop) this.drawCrop(col, row, crop, plot.plantedAt, now, plot.watered);
@@ -255,7 +278,10 @@ export class Renderer {
     this.ctx.fillStyle = '#3f7a2a';
     this.ctx.fillRect(c.x - 1.5, c.y - h, 3, h);
     const leafR = stage.grown ? 10 : 3 + stage.progress * 6;
-    this.ctx.fillStyle = '#4c9a2a';
+    const lg = this.ctx.createLinearGradient(c.x + sway, c.y - h - leafR, c.x + sway, c.y - h + leafR);
+    lg.addColorStop(0, stage.grown ? '#5cb338' : '#66c14a');
+    lg.addColorStop(1, stage.grown ? '#3d8a24' : '#4a9e2c');
+    this.ctx.fillStyle = lg;
     this.ctx.beginPath();
     this.ctx.arc(c.x + sway, c.y - h, leafR, 0, Math.PI * 2);
     this.ctx.fill();
@@ -292,7 +318,10 @@ export class Renderer {
       this.ctx.fillStyle = '#7a5230';
       this.ctx.fillRect(c.x - 2.5, c.y - 16, 5, 18);
       const r = grown ? 15 : 9;
-      this.ctx.fillStyle = grown ? '#2f7d2f' : '#3f8f3f';
+      const cg = this.ctx.createRadialGradient(c.x - 2, c.y - 30, 2, c.x, c.y - 22, r + 4);
+      cg.addColorStop(0, grown ? '#55b03a' : '#5ab844');
+      cg.addColorStop(1, grown ? '#2c7424' : '#3a8a2e');
+      this.ctx.fillStyle = cg;
       this.ctx.beginPath();
       this.ctx.arc(c.x - 6, c.y - 22, r * 0.7, 0, Math.PI * 2);
       this.ctx.fill();

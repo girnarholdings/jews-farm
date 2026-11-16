@@ -12,7 +12,7 @@ interface Pt {
   y: number;
 }
 
-const TAP_SLOP = 8; // px
+const TAP_SLOP = 14; // px
 
 export class Input {
   private pointers = new Map<number, Pt>();

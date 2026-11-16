@@ -14,9 +14,12 @@ export function tileCenter(col: number, row: number): ScreenPos {
   };
 }
 
-/** Camera-space screen position -> tile (col,row). */
+/** Camera-space screen position -> tile (col,row). Tiles are L∞-Voronoi cells centered on integers, so round (not floor). */
 export function screenToTile(x: number, y: number): { col: number; row: number } {
-  const col = (x / (TILE_W / 2) + y / (TILE_H / 2)) / 2;
-  const row = (y / (TILE_H / 2) - x / (TILE_W / 2)) / 2;
-  return { col: Math.floor(col), row: Math.floor(row) };
+  const fx = x / (TILE_W / 2);
+  const fy = y / (TILE_H / 2);
+  return {
+    col: Math.round((fx + fy) / 2),
+    row: Math.round((fy - fx) / 2),
+  };
 }
