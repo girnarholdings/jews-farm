@@ -89,6 +89,7 @@ export const ITEMS: Record<string, ItemDef> = {
   bakery: item('bakery', 'Bakery', 'מאפייה', 'building', 2000, 0, 0, '', 12),
   winery: item('winery', 'Winery', 'יקב', 'building', 2500, 0, 0, '', 14),
   oil_press: item('oil_press', 'Oil Press', 'בית בד', 'building', 3000, 0, 0, '', 16),
+  harvester: item('harvester', 'Harvester', 'קוצר (Kotzer)', 'building', 5000, 0, 0, '', 15),
 };
 
 export function itemList(kind?: ItemDef['kind']): ItemDef[] {

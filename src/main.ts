@@ -7,10 +7,11 @@ import { ITEMS, itemList } from './game/data/items';
 import { RECIPES, recipesFor } from './game/data/recipes';
 import { makeNeighbors, type Neighbor } from './game/data/neighbors';
 import { cropStage, objectState } from './game/systems/growth';
-import { plow, plant, harvest, clearPlot, placeObject, harvestObject, sellObject, instagrow, INSTAGROW_COST } from './game/systems/farming';
+import { plow, plant, harvest, clearPlot, placeObject, harvestObject, sellObject, instagrow, INSTAGROW_COST, fertilize, FERTILIZE_COST, harvestAllReady, countReadyCrops } from './game/systems/farming';
 import { addCoins, addXp, PLOW_COST } from './game/systems/economy';
 import { saveState, loadState, clearSave } from './core/save';
-import { unlock, playPlant, playHarvest, playLevelUp, playError, toggleMute } from './core/audio';
+import { unlock, playPlant, playHarvest, playLevelUp, playError, toggleMute, isMuted, playQuest, playRibbon, playBuy, playFertilize, playInstagrow, playCoin } from './core/audio';
+import { TIPS } from './game/data/tips';
 import { Hud } from './ui/hud';
 import { DialogueBox } from './ui/dialogue';
 import { QuestPanel } from './ui/quests';
@@ -105,10 +106,15 @@ function postAction(): void {
     playLevelUp();
     celebrateLevel(state.level);
     dialogue.say(SABA_MOISHE, lines.levelUp());
+    const unlocked = unlocksAt(state.level);
+    if (unlocked.length) {
+      window.setTimeout(() => hud.toast(`Unlocked: ${unlocked.join(', ')}`), 1000);
+    }
     lastLevel = state.level;
   }
   const earned = checkRibbons(state);
   if (earned.length) {
+    playRibbon();
     const r = earned[earned.length - 1];
     dialogue.say(SABA_MOISHE, `Ribbon earned: ${r.name} \u2014 ${r.desc}. Mazel tov!`);
   }
@@ -120,12 +126,16 @@ function finishAction(): void {
   const done = q && isComplete(q, state.quests);
   if (done && q) completeQuest(state, q);
   postAction();
-  if (done && q) dialogue.say(SABA_MOISHE, `Mazel tov! "${q.name}" complete \u2014 kol hakavod!`);
+  if (done && q) {
+    playQuest();
+    dialogue.say(SABA_MOISHE, `Mazel tov! "${q.name}" complete \u2014 kol hakavod!`);
+  }
 }
 
 function sellObjectAt(id: number, name: string, cost: number): void {
   hud.confirm(name, `Sell it for ${Math.round(cost * 0.05)}\u20aa?`, 'Sell', () => {
     const r = sellObject(state, id);
+    if (r.ok) playCoin();
     hud.toast(r.message ?? 'Sold!');
     postAction();
   });
@@ -324,6 +334,58 @@ function showReturnModal(): boolean {
   return true;
 }
 
+let tipIndex = Math.floor(Math.random() * TIPS.length);
+
+function showTipModal(): void {
+  const body = hud.beginModal('Tip');
+  const p = document.createElement('p');
+  p.style.cssText = 'grid-column:1/-1;padding:12px 4px;font-size:15px;line-height:1.45;';
+  p.textContent = TIPS[tipIndex];
+  body.appendChild(p);
+  const next = document.createElement('button');
+  next.textContent = 'Another tip';
+  next.style.cssText = 'grid-column:1/-1;padding:12px;border:0;border-radius:12px;background:#0038b8;color:#fff;font-weight:700;font-size:15px;';
+  next.addEventListener('click', () => {
+    tipIndex = (tipIndex + 1) % TIPS.length;
+    showTipModal();
+  });
+  body.appendChild(next);
+  const close = document.createElement('button');
+  close.textContent = 'Close';
+  close.style.cssText = 'grid-column:1/-1;padding:10px;border:0;border-radius:12px;background:rgba(0,0,0,0.08);color:#1b2a1e;';
+  close.addEventListener('click', () => hud.hideModal());
+  body.appendChild(close);
+}
+
+function showHarvesterModal(): void {
+  const ready = countReadyCrops(state, Date.now());
+  hud.modal(
+    'Harvester',
+    [['Ready crops', `${ready}`]],
+    ready > 0
+      ? [
+          {
+            label: `Harvest all ${ready}`,
+            primary: true,
+            cb: () => {
+              const n = harvestAllReady(state, Date.now());
+              playHarvest();
+              hud.toast(`Harvested ${n} crop${n === 1 ? '' : 's'}!`);
+              finishAction();
+            },
+          },
+        ]
+      : [{ label: 'Nothing ready yet', cb: () => {} }],
+  );
+}
+
+function unlocksAt(level: number): string[] {
+  const names: string[] = [];
+  for (const c of Object.values(CROPS)) if (c.unlockLevel === level) names.push(c.name);
+  for (const i of Object.values(ITEMS)) if (i.unlockLevel === level) names.push(i.name);
+  return names;
+}
+
 function setViewing(n: Neighbor | null): void {
   viewing = n;
   backBtn.style.display = n ? '' : 'none';
@@ -381,6 +443,9 @@ function handleBuildingTap(obj: PlacedObject): void {
     case 'oil_press':
       showCraftingModal(obj.itemId, obj.id);
       break;
+    case 'harvester':
+      showHarvesterModal();
+      break;
     default:
       sellObjectAt(obj.id, ITEMS[obj.itemId].name, ITEMS[obj.itemId].cost);
   }
@@ -398,6 +463,7 @@ function handleTap(col: number, row: number): void {
     const r = placeObject(state, pendingItem, col, row, now);
     if (r.ok) {
       pendingItem = null;
+      playBuy();
       recordTask(state.quests, 'buy', placedId);
       finishAction();
       hud.toast('Mazel tov! Placed.');
@@ -458,12 +524,26 @@ function handleTap(col: number, row: number): void {
         [['Status', `Still growing \u2014 ~${remainMin}m to go`]],
         [
           {
-            label: `Instagrow \u2014 ${INSTAGROW_COST} Sela`,
+            label: `Fertilize \u2014 ${FERTILIZE_COST} Sela (2x XP)`,
             primary: true,
+            cb: () => {
+              const r = fertilize(state, col, row);
+              hud.toast(r.ok ? 'Fertilized! Double XP on harvest.' : (r.message ?? 'Error'));
+              if (r.ok) {
+                playFertilize();
+                postAction();
+              }
+            },
+          },
+          {
+            label: `Instagrow \u2014 ${INSTAGROW_COST} Sela`,
             cb: () => {
               const r = instagrow(state, col, row, Date.now());
               hud.toast(r.ok ? 'Instagrow! It is ready.' : (r.message ?? 'Error'));
-              if (r.ok) postAction();
+              if (r.ok) {
+                playInstagrow();
+                postAction();
+              }
             },
           },
           { label: 'Close', cb: () => {} },
@@ -599,11 +679,17 @@ app.appendChild(expandBtn);
 
 const soundBtn = document.createElement('button');
 soundBtn.id = 'sound-btn';
-soundBtn.textContent = '\u{1F50A}';
+soundBtn.textContent = isMuted() ? '\u{1F507}' : '\u{1F50A}';
 soundBtn.addEventListener('click', () => {
   soundBtn.textContent = toggleMute() ? '\u{1F507}' : '\u{1F50A}';
 });
 app.appendChild(soundBtn);
+
+const helpBtn = document.createElement('button');
+helpBtn.id = 'help-btn';
+helpBtn.textContent = '?';
+helpBtn.addEventListener('click', showTipModal);
+app.appendChild(helpBtn);
 
 const tutorialEl = document.createElement('div');
 tutorialEl.id = 'tutorial';

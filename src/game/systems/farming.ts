@@ -1,4 +1,4 @@
-import type { FarmState } from '../types';
+import type { FarmState, Plot, CropDef } from '../types';
 import { CROPS } from '../data/crops';
 import { ITEMS } from '../data/items';
 import { addCoins, addXp, spendCoins, spendSela, PLOW_COST, PLOW_XP } from './economy';
@@ -48,6 +48,16 @@ export function plant(
   return { ok: true };
 }
 
+function harvestPlot(s: FarmState, plot: Plot, crop: CropDef, col: number, row: number): void {
+  const mastered = (s.mastery[crop.id] ?? 0) >= MASTERY_MAX;
+  addCoins(s, crop.sell + (mastered ? Math.round(crop.sell * MASTERY_BONUS) : 0));
+  s.mastery[crop.id] = (s.mastery[crop.id] ?? 0) + 1;
+  if (plot.fertilized) addXp(s, crop.plantXp * 2);
+  s.stats.harvests++;
+  if (Math.random() < 0.15) s.bushels[crop.id] = (s.bushels[crop.id] ?? 0) + 1;
+  s.plots[col + row * s.cols] = null;
+}
+
 export function harvest(s: FarmState, col: number, row: number, now: number): ActionResult {
   if (!inBounds(s, col, row)) return { ok: false, message: 'Out of bounds' };
   const plot = s.plots[col + row * s.cols];
@@ -57,13 +67,50 @@ export function harvest(s: FarmState, col: number, row: number, now: number): Ac
   const stage = cropStage(crop, plot.plantedAt ?? now, now, plot.watered);
   if (stage.withered) return { ok: false, message: 'Withered — clear it' };
   if (!stage.grown) return { ok: false, message: 'Still growing' };
-  const mastered = (s.mastery[crop.id] ?? 0) >= MASTERY_MAX;
-  addCoins(s, crop.sell + (mastered ? Math.round(crop.sell * MASTERY_BONUS) : 0));
-  s.mastery[crop.id] = (s.mastery[crop.id] ?? 0) + 1;
-  s.stats.harvests++;
-  if (Math.random() < 0.15) s.bushels[crop.id] = (s.bushels[crop.id] ?? 0) + 1;
-  s.plots[col + row * s.cols] = null;
+  harvestPlot(s, plot, crop, col, row);
   return { ok: true };
+}
+
+export const FERTILIZE_COST = 3; // Sela
+
+export function fertilize(s: FarmState, col: number, row: number): ActionResult {
+  if (!inBounds(s, col, row)) return { ok: false, message: 'Out of bounds' };
+  const plot = s.plots[col + row * s.cols];
+  if (!plot || plot.state !== 'planted') return { ok: false, message: 'Nothing to fertilize' };
+  if (plot.fertilized) return { ok: false, message: 'Already fertilized' };
+  if (!spendSela(s, FERTILIZE_COST)) return { ok: false, message: 'Not enough Sela' };
+  plot.fertilized = true;
+  return { ok: true };
+}
+
+/** Harvests every ready crop. Returns how many were collected. */
+export function harvestAllReady(s: FarmState, now: number): number {
+  let count = 0;
+  for (let row = 0; row < s.rows; row++) {
+    for (let col = 0; col < s.cols; col++) {
+      const plot = s.plots[col + row * s.cols];
+      if (!plot || plot.state !== 'planted') continue;
+      const crop = CROPS[plot.cropId ?? ''];
+      if (!crop) continue;
+      const stage = cropStage(crop, plot.plantedAt ?? now, now, plot.watered);
+      if (!stage.grown || stage.withered) continue;
+      harvestPlot(s, plot, crop, col, row);
+      count++;
+    }
+  }
+  return count;
+}
+
+export function countReadyCrops(s: FarmState, now: number): number {
+  let count = 0;
+  for (const plot of s.plots) {
+    if (!plot || plot.state !== 'planted') continue;
+    const crop = CROPS[plot.cropId ?? ''];
+    if (!crop) continue;
+    const stage = cropStage(crop, plot.plantedAt ?? now, now, plot.watered);
+    if (stage.grown && !stage.withered) count++;
+  }
+  return count;
 }
 
 export function clearPlot(s: FarmState, col: number, row: number): ActionResult {

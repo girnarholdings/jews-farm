@@ -191,9 +191,10 @@ export class Renderer {
         this.ctx.arc(c.x + Math.cos(a) * 5, c.y - h + Math.sin(a) * 3, 3, 0, Math.PI * 2);
         this.ctx.fill();
       }
-      this.ctx.fillStyle = 'rgba(255,220,80,0.35)';
+      const pulse = 0.25 + (Math.sin(now / 260) + 1) * 0.1;
+      this.ctx.fillStyle = `rgba(255,220,80,${pulse})`;
       this.ctx.beginPath();
-      this.ctx.arc(c.x, c.y - h, leafR + 3, 0, Math.PI * 2);
+      this.ctx.arc(c.x, c.y - h, leafR + 3 + Math.sin(now / 260) * 2, 0, Math.PI * 2);
       this.ctx.fill();
       this.drawTimer(c.x, c.y, 'Ready!', '#ffe27a');
     } else {

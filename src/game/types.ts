@@ -35,6 +35,7 @@ export interface Plot {
   cropId?: string;
   plantedAt?: number;
   watered?: boolean;
+  fertilized?: boolean;
 }
 
 export type ObjectState = 'growing' | 'grown';
