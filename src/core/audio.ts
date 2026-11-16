@@ -11,8 +11,31 @@ export function isMuted(): boolean {
   return muted;
 }
 
+let ambientGain: GainNode | null = null;
+
+export function startAmbient(): void {
+  if (ambientGain) return;
+  const c = ensureCtx();
+  if (!c) return;
+  const buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  const filter = c.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 380;
+  const gain = c.createGain();
+  gain.gain.value = muted ? 0 : 0.035;
+  src.connect(filter).connect(gain).connect(c.destination);
+  src.start();
+  ambientGain = gain;
+}
+
 export function toggleMute(): boolean {
   muted = !muted;
+  if (ambientGain) ambientGain.gain.value = muted ? 0 : 0.035;
   try {
     localStorage.setItem('jews-farm-muted', muted ? '1' : '0');
   } catch {
@@ -51,6 +74,7 @@ function tone(freq: number, dur: number, type: OscillatorType = 'sine', vol = 0.
 /** Call on first user gesture (iOS requires it before audio). */
 export function unlock(): void {
   ensureCtx();
+  startAmbient();
 }
 
 export function playPlant(): void {

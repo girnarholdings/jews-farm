@@ -17,6 +17,8 @@ function farm(cols: number, rows: number): FarmState {
     sela: 0,
     xp: 0,
     level: 1,
+    fuel: 0,
+    maxFuel: 20,
     quests: { completed: [], progress: {} },
     stats: { plows: 0, plants: 0, harvests: 0, objects: 0, coinsEarned: 0 },
     ribbons: [],

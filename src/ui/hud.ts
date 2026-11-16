@@ -8,6 +8,7 @@ export class Hud {
   private xpText: HTMLElement;
   private coinsEl: HTMLElement;
   private selaEl: HTMLElement;
+  private fuelEl: HTMLElement;
   private toastEl: HTMLElement;
   private modalEl: HTMLElement;
   private modalBody: HTMLElement;
@@ -22,6 +23,7 @@ export class Hud {
         <div class="xp"><div class="xp-fill" id="xp-fill"></div><span class="xp-text" id="xp-text"></span></div>
       </div>
       <div class="hud-right">
+        <span class="res fuel" id="fuel">Fuel 20</span>
         <span class="res coins" id="coins">₪0</span>
         <span class="res sela" id="sela">Sela 0</span>
       </div>`;
@@ -51,12 +53,14 @@ export class Hud {
     this.xpText = bar.querySelector('#xp-text')!;
     this.coinsEl = bar.querySelector('#coins')!;
     this.selaEl = bar.querySelector('#sela')!;
+    this.fuelEl = bar.querySelector('#fuel')!;
   }
 
   update(s: FarmState): void {
     this.levelEl.textContent = `Lv ${s.level}`;
     this.coinsEl.textContent = `₪${s.coins.toLocaleString()}`;
     this.selaEl.textContent = `Sela ${s.sela}`;
+    this.fuelEl.textContent = `Fuel ${Math.floor(s.fuel)}`;
     const base = xpForLevel(s.level);
     const next = s.level >= MAX_LEVEL ? base : xpForLevel(s.level + 1);
     const span = Math.max(1, next - base);

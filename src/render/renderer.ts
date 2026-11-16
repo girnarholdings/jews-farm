@@ -24,11 +24,24 @@ function fmtTime(seconds: number): string {
   return rm === 0 ? `${h}h` : `${h}h ${rm}m`;
 }
 
+interface Effect {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  size: number;
+  text?: string;
+}
+
 export class Renderer {
   readonly canvas: HTMLCanvasElement;
   readonly ctx: CanvasRenderingContext2D;
   camera = { x: 0, y: 0, zoom: 1 };
   private dpr = 1;
+  private effects: Effect[] = [];
 
   constructor(container: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -101,6 +114,9 @@ export class Renderer {
     const fy = tileCenter(Math.floor(state.cols / 2), state.rows - 2);
     drawFarmer(ctx, fy.x, fy.y);
 
+    this.updateEffects(16);
+    this.drawEffects();
+
     ctx.restore();
   }
 
@@ -156,6 +172,66 @@ export class Renderer {
     ctx.fillRect(x - w / 2, y, w * Math.min(1, progress), 4);
   }
 
+  burst(x: number, y: number, color: string): void {
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 1 + Math.random() * 2.5;
+      this.effects.push({
+        x,
+        y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 1,
+        life: 500 + Math.random() * 300,
+        maxLife: 800,
+        color,
+        size: 2 + Math.random() * 2,
+      });
+    }
+  }
+
+  floatText(x: number, y: number, text: string, color: string): void {
+    this.effects.push({ x, y, vx: 0, vy: -0.6, life: 900, maxLife: 900, color, size: 0, text });
+  }
+
+  burstAt(col: number, row: number, color: string): void {
+    const c = tileCenter(col, row);
+    this.burst(c.x, c.y - 12, color);
+  }
+
+  floatTextAt(col: number, row: number, text: string, color: string): void {
+    const c = tileCenter(col, row);
+    this.floatText(c.x, c.y - 24, text, color);
+  }
+
+  private updateEffects(dt: number): void {
+    for (const e of this.effects) {
+      e.life -= dt;
+      e.x += e.vx;
+      e.y += e.vy;
+      e.vy += 0.08;
+    }
+    this.effects = this.effects.filter((e) => e.life > 0);
+  }
+
+  private drawEffects(): void {
+    for (const e of this.effects) {
+      const a = Math.max(0, e.life / e.maxLife);
+      this.ctx.globalAlpha = a;
+      if (e.text) {
+        this.ctx.fillStyle = e.color;
+        this.ctx.font = 'bold 13px system-ui, sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(e.text, e.x, e.y);
+      } else {
+        this.ctx.fillStyle = e.color;
+        this.ctx.beginPath();
+        this.ctx.arc(e.x, e.y, e.size * a, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+      this.ctx.globalAlpha = 1;
+    }
+  }
+
   private drawCrop(
     col: number,
     row: number,
@@ -175,12 +251,13 @@ export class Renderer {
       return;
     }
     const h = stage.grown ? 20 : 6 + stage.progress * 12;
+    const sway = Math.sin(now / 380 + col * 7 + row * 5) * 2;
     this.ctx.fillStyle = '#3f7a2a';
     this.ctx.fillRect(c.x - 1.5, c.y - h, 3, h);
     const leafR = stage.grown ? 10 : 3 + stage.progress * 6;
     this.ctx.fillStyle = '#4c9a2a';
     this.ctx.beginPath();
-    this.ctx.arc(c.x, c.y - h, leafR, 0, Math.PI * 2);
+    this.ctx.arc(c.x + sway, c.y - h, leafR, 0, Math.PI * 2);
     this.ctx.fill();
     if (stage.grown) {
       const produce = CROP_COLORS[crop.id] ?? '#e74c3c';
@@ -188,7 +265,7 @@ export class Renderer {
       for (let i = 0; i < 4; i++) {
         const a = (i / 4) * Math.PI * 2;
         this.ctx.beginPath();
-        this.ctx.arc(c.x + Math.cos(a) * 5, c.y - h + Math.sin(a) * 3, 3, 0, Math.PI * 2);
+        this.ctx.arc(c.x + sway + Math.cos(a) * 5, c.y - h + Math.sin(a) * 3, 3, 0, Math.PI * 2);
         this.ctx.fill();
       }
       const pulse = 0.25 + (Math.sin(now / 260) + 1) * 0.1;

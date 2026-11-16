@@ -90,6 +90,8 @@ export const ITEMS: Record<string, ItemDef> = {
   winery: item('winery', 'Winery', 'יקב', 'building', 2500, 0, 0, '', 14),
   oil_press: item('oil_press', 'Oil Press', 'בית בד', 'building', 3000, 0, 0, '', 16),
   harvester: item('harvester', 'Harvester', 'קוצר (Kotzer)', 'building', 5000, 0, 0, '', 15),
+  tractor: item('tractor', 'Tractor', 'טרקטור', 'building', 6000, 0, 0, '', 18),
+  seeder: item('seeder', 'Seeder', 'זורע', 'building', 5500, 0, 0, '', 17),
 };
 
 export function itemList(kind?: ItemDef['kind']): ItemDef[] {

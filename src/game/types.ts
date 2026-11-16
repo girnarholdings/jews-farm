@@ -100,6 +100,8 @@ export interface FarmState {
   sela: number;
   xp: number;
   level: number;
+  fuel: number;
+  maxFuel: number;
   quests: QuestState;
   stats: Stats;
   ribbons: string[];

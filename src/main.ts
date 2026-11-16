@@ -1,5 +1,6 @@
 import './style.css';
 import { Renderer } from './render/renderer';
+import { CROP_COLORS } from './render/palette';
 import { Input } from './core/input';
 import type { FarmState, PlacedObject } from './game/types';
 import { CROPS, unlockedCrops } from './game/data/crops';
@@ -8,6 +9,7 @@ import { RECIPES, recipesFor } from './game/data/recipes';
 import { makeNeighbors, type Neighbor } from './game/data/neighbors';
 import { cropStage, objectState } from './game/systems/growth';
 import { plow, plant, harvest, clearPlot, placeObject, harvestObject, sellObject, instagrow, INSTAGROW_COST, fertilize, FERTILIZE_COST, harvestAllReady, countReadyCrops } from './game/systems/farming';
+import { spendFuel, plowArea, plantAllPlowed, countPlowed, TRACTOR_FUEL, SEEDER_FUEL, HARVESTER_FUEL } from './game/systems/vehicles';
 import { addCoins, addXp, PLOW_COST } from './game/systems/economy';
 import { saveState, loadState, clearSave } from './core/save';
 import { unlock, playPlant, playHarvest, playLevelUp, playError, toggleMute, isMuted, playQuest, playRibbon, playBuy, playFertilize, playInstagrow, playCoin } from './core/audio';
@@ -52,6 +54,8 @@ function newState(): FarmState {
     sela: 5,
     xp: 0,
     level: 1,
+    fuel: 20,
+    maxFuel: 20,
     quests: initQuestState(),
     stats: { plows: 0, plants: 0, harvests: 0, objects: 0, coinsEarned: 0 },
     ribbons: [],
@@ -83,6 +87,10 @@ if (!state.craftQueue) state.craftQueue = [];
 if (state.giftStreak == null) state.giftStreak = 0;
 if (state.tutorial == null) state.tutorial = { step: 0, done: true };
 if (!state.mastery) state.mastery = {};
+if (state.fuel == null) {
+  state.fuel = 20;
+  state.maxFuel = 20;
+}
 
 const neighbors = makeNeighbors();
 let pendingItem: string | null = null;
@@ -361,13 +369,17 @@ function showHarvesterModal(): void {
   const ready = countReadyCrops(state, Date.now());
   hud.modal(
     'Harvester',
-    [['Ready crops', `${ready}`]],
+    [['Ready crops', `${ready}`], ['Fuel', `${state.fuel}/${state.maxFuel}`]],
     ready > 0
       ? [
           {
-            label: `Harvest all ${ready}`,
+            label: `Harvest all ${ready} (${HARVESTER_FUEL} fuel)`,
             primary: true,
             cb: () => {
+              if (!spendFuel(state, HARVESTER_FUEL)) {
+                hud.toast('Not enough fuel.');
+                return;
+              }
               const n = harvestAllReady(state, Date.now());
               playHarvest();
               hud.toast(`Harvested ${n} crop${n === 1 ? '' : 's'}!`);
@@ -377,6 +389,46 @@ function showHarvesterModal(): void {
         ]
       : [{ label: 'Nothing ready yet', cb: () => {} }],
   );
+}
+
+function showTractorModal(obj: PlacedObject): void {
+  hud.modal(
+    'Tractor',
+    [['Plows a 3x3 patch', `Costs ${TRACTOR_FUEL} fuel`], ['Fuel', `${state.fuel}/${state.maxFuel}`]],
+    [
+      {
+        label: `Plow (${TRACTOR_FUEL} fuel)`,
+        primary: true,
+        cb: () => {
+          if (!spendFuel(state, TRACTOR_FUEL)) {
+            hud.toast('Not enough fuel.');
+            return;
+          }
+          const n = plowArea(state, obj.col, obj.row);
+          playPlant();
+          hud.toast(n > 0 ? `Plowed ${n} plots!` : 'No empty tiles nearby.');
+          finishAction();
+        },
+      },
+    ],
+  );
+}
+
+function showSeederModal(): void {
+  if (countPlowed(state) === 0) {
+    hud.modal('Seeder', [['No plowed plots', 'Plow some land first']], [{ label: 'Close', cb: () => {} }]);
+    return;
+  }
+  hud.showSeeds(unlockedCrops(state.level), state.level, state.mastery, (cropId) => {
+    if (!spendFuel(state, SEEDER_FUEL)) {
+      hud.toast('Not enough fuel.');
+      return;
+    }
+    const n = plantAllPlowed(state, cropId, Date.now());
+    playPlant();
+    hud.toast(n > 0 ? `Seeded ${n} plots!` : 'Not enough coins for seeds.');
+    finishAction();
+  });
 }
 
 function unlocksAt(level: number): string[] {
@@ -446,6 +498,12 @@ function handleBuildingTap(obj: PlacedObject): void {
     case 'harvester':
       showHarvesterModal();
       break;
+    case 'tractor':
+      showTractorModal(obj);
+      break;
+    case 'seeder':
+      showSeederModal();
+      break;
     default:
       sellObjectAt(obj.id, ITEMS[obj.itemId].name, ITEMS[obj.itemId].cost);
   }
@@ -509,6 +567,8 @@ function handleTap(col: number, row: number): void {
           hud.toast(r.ok ? `Harvested! +${crop.sell}\u20aa` : (r.message ?? 'Error'));
           if (r.ok) {
             playHarvest();
+            renderer.burstAt(col, row, CROP_COLORS[crop.id] ?? '#ffd54f');
+            renderer.floatTextAt(col, row, `+${crop.sell}\u20aa`, '#ffd54f');
             dialogue.say(SABA_MOISHE, lines.harvest());
             recordTask(state.quests, 'harvest', plot.cropId);
             advanceTutorial();
@@ -567,6 +627,8 @@ function handleTap(col: number, row: number): void {
           hud.toast(r.ok ? `${item.product} collected! +${item.yieldCoins}\u20aa` : (r.message ?? 'Error'));
           if (r.ok) {
             playHarvest();
+            renderer.burstAt(obj.col, obj.row, '#ffd54f');
+            renderer.floatTextAt(obj.col, obj.row, `+${item.yieldCoins}\u20aa`, '#ffd54f');
             dialogue.say(SABA_MOISHE, lines.harvest());
             recordTask(state.quests, 'harvestObject', obj.itemId);
             finishAction();

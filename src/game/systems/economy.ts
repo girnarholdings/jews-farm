@@ -5,6 +5,7 @@ export const PLOW_COST = 15;
 export const PLOW_XP = 1;
 export const COINS_CAP = 999_999_999;
 export const SELA_CAP = 99_999;
+export const FUEL_BASE = 20;
 export const LEVELUP_SELA = 1; // +1 Sela per level gained
 export const WITHER_MULTIPLIER = 2.2; // wither at growTime × 2.2 (gameSettingsCMS witherMultiplier)
 
@@ -42,6 +43,8 @@ export function addXp(s: FarmState, n: number): number {
   if (gained > 0) {
     s.level = newLevel;
     s.sela = clamp(s.sela + gained * LEVELUP_SELA, 0, SELA_CAP);
+    s.maxFuel = FUEL_BASE + (s.level - 1);
+    s.fuel = s.maxFuel;
   }
   return gained;
 }
