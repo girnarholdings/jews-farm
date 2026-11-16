@@ -113,6 +113,23 @@ export function countReadyCrops(s: FarmState, now: number): number {
   return count;
 }
 
+export const UNWITHER_COST = 2; // Sela
+
+/** Restores a withered crop to its ready-to-harvest state. */
+export function unwither(s: FarmState, col: number, row: number, now: number): ActionResult {
+  if (!inBounds(s, col, row)) return { ok: false, message: 'Out of bounds' };
+  const plot = s.plots[col + row * s.cols];
+  if (!plot || plot.state !== 'planted') return { ok: false, message: 'Nothing to unwither' };
+  const crop = CROPS[plot.cropId ?? ''];
+  if (!crop) return { ok: false, message: 'Unknown crop' };
+  const stage = cropStage(crop, plot.plantedAt ?? now, now, plot.watered);
+  if (!stage.withered) return { ok: false, message: 'Not withered' };
+  if (!spendSela(s, UNWITHER_COST)) return { ok: false, message: 'Not enough Sela' };
+  const scale = plot.watered ? 0.5 : 1;
+  plot.plantedAt = now - crop.growSeconds * scale * 1000 - 1000;
+  return { ok: true };
+}
+
 export function clearPlot(s: FarmState, col: number, row: number): ActionResult {
   if (!inBounds(s, col, row)) return { ok: false, message: 'Out of bounds' };
   if (!s.plots[col + row * s.cols]) return { ok: false, message: 'Nothing here' };

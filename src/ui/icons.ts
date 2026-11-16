@@ -13,6 +13,7 @@ const ICONS: Record<string, string> = {
   reset: `<svg ${ATTRS}><path d="M3 12a9 9 0 1 0 2.7-6.4L3 8"/><path d="M3 3v5h5"/></svg>`,
   close: `<svg ${ATTRS}><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg>`,
   back: `<svg ${ATTRS}><path d="M19 12H5"/><path d="m11 6-6 6 6 6"/></svg>`,
+  settings: `<svg ${ATTRS}><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><circle cx="9" cy="6" r="2.5" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="2.5" fill="currentColor" stroke="none"/><circle cx="7" cy="18" r="2.5" fill="currentColor" stroke="none"/></svg>`,
 };
 
 export function icon(name: string, size = 20): string {

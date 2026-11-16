@@ -110,10 +110,41 @@ export class Hud {
   ): void {
     this.modalEl.querySelector('#modal-title')!.textContent = 'The Shuk';
     this.modalBody.innerHTML = '';
-    this.addSection('Trees', trees, level, onPick);
-    this.addSection('Animals', animals, level, onPick);
-    this.addSection('Buildings', buildings, level, onPick);
-    this.addSection('Decorations', decors, level, onPick);
+    const sections = [
+      { label: 'Trees', items: trees },
+      { label: 'Animals', items: animals },
+      { label: 'Buildings', items: buildings },
+      { label: 'Decorations', items: decors },
+    ];
+
+    const tabBar = document.createElement('div');
+    tabBar.className = 'tabs';
+    this.modalBody.appendChild(tabBar);
+
+    const panes: HTMLElement[] = sections.map((sec) => {
+      const pane = document.createElement('div');
+      pane.className = 'tab-pane';
+      this.addItemCards(pane, sec.items, level, onPick);
+      this.modalBody.appendChild(pane);
+      return pane;
+    });
+
+    sections.forEach((sec, i) => {
+      const tab = document.createElement('button');
+      tab.className = 'tab' + (i === 0 ? ' active' : '');
+      tab.textContent = sec.label;
+      tab.addEventListener('click', () => {
+        tabBar.querySelectorAll('.tab').forEach((t, j) => t.classList.toggle('active', j === i));
+        panes.forEach((p, j) => {
+          p.style.display = j === i ? '' : 'none';
+        });
+      });
+      tabBar.appendChild(tab);
+    });
+    panes.forEach((p, i) => {
+      p.style.display = i === 0 ? '' : 'none';
+    });
+
     this.modalEl.classList.remove('hidden');
   }
 
@@ -142,10 +173,7 @@ export class Hud {
     this.modalEl.classList.remove('hidden');
   }
 
-  private addSection(title: string, items: ItemDef[], level: number, onPick: (id: string) => void): void {
-    const h = document.createElement('h3');
-    h.textContent = title;
-    this.modalBody.appendChild(h);
+  private addItemCards(container: HTMLElement, items: ItemDef[], level: number, onPick: (id: string) => void): void {
     for (const it of items) {
       const btn = document.createElement('button');
       btn.className = 'seed-card';
@@ -159,7 +187,7 @@ export class Hud {
           onPick(it.id);
         });
       }
-      this.modalBody.appendChild(btn);
+      container.appendChild(btn);
     }
   }
 

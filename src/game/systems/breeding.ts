@@ -49,6 +49,7 @@ export function collectLamb(s: FarmState, pen: PlacedObject, now: number): boole
     variant,
     pattern,
   });
+  if (!s.sheepColors.includes(variant)) s.sheepColors.push(variant);
   pen.breeding = undefined;
   return true;
 }

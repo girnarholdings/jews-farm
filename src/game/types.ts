@@ -109,6 +109,8 @@ export interface FarmState {
   giftStreak: number;
   tutorial: { step: number; done: boolean };
   mastery: Record<string, number>;
+  sheepColors: string[];
+  collectionsDone: string[];
   bushels: Record<string, number>;
   crafts: Record<string, number>;
   craftQueue: CraftJob[];

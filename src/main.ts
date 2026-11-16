@@ -9,8 +9,9 @@ import { ITEMS, itemList } from './game/data/items';
 import { RECIPES, recipesFor } from './game/data/recipes';
 import { makeNeighbors, type Neighbor } from './game/data/neighbors';
 import { cropStage, objectState } from './game/systems/growth';
-import { plow, plant, harvest, clearPlot, placeObject, harvestObject, sellObject, instagrow, INSTAGROW_COST, fertilize, FERTILIZE_COST, harvestAllReady, countReadyCrops } from './game/systems/farming';
+import { plow, plant, harvest, clearPlot, placeObject, harvestObject, sellObject, instagrow, INSTAGROW_COST, fertilize, FERTILIZE_COST, harvestAllReady, countReadyCrops, unwither, UNWITHER_COST } from './game/systems/farming';
 import { spendFuel, plowArea, plantAllPlowed, countPlowed, TRACTOR_FUEL, SEEDER_FUEL, HARVESTER_FUEL } from './game/systems/vehicles';
+import { checkCollections, COLLECTIONS, collectionProgress } from './game/systems/collections';
 import { addCoins, addXp, PLOW_COST } from './game/systems/economy';
 import { saveState, loadState, clearSave } from './core/save';
 import { unlock, playPlant, playHarvest, playLevelUp, playError, toggleMute, isMuted, playQuest, playRibbon, playBuy, playFertilize, playInstagrow, playCoin } from './core/audio';
@@ -63,6 +64,8 @@ function newState(): FarmState {
     giftStreak: 0,
     tutorial: { step: 0, done: false },
     mastery: {},
+    sheepColors: [],
+    collectionsDone: [],
     bushels: {},
     crafts: {},
     craftQueue: [],
@@ -88,6 +91,8 @@ if (!state.craftQueue) state.craftQueue = [];
 if (state.giftStreak == null) state.giftStreak = 0;
 if (state.tutorial == null) state.tutorial = { step: 0, done: true };
 if (!state.mastery) state.mastery = {};
+if (!state.sheepColors) state.sheepColors = [];
+if (!state.collectionsDone) state.collectionsDone = [];
 if (state.fuel == null) {
   state.fuel = 20;
   state.maxFuel = 20;
@@ -126,6 +131,12 @@ function postAction(): void {
     playRibbon();
     const r = earned[earned.length - 1];
     dialogue.say(SABA_MOISHE, `Ribbon earned: ${r.name} \u2014 ${r.desc}. Mazel tov!`);
+  }
+  const collections = checkCollections(state);
+  if (collections.length) {
+    playRibbon();
+    const c = collections[collections.length - 1];
+    dialogue.say(SABA_MOISHE, `Collection complete: ${c.name}! +${c.coins}\u20aa +${c.sela} Sela.`);
   }
   save();
 }
@@ -439,6 +450,29 @@ function unlocksAt(level: number): string[] {
   return names;
 }
 
+function showSettingsModal(): void {
+  hud.modal(
+    'Settings',
+    [['Sound', isMuted() ? 'Off' : 'On']],
+    [
+      { label: isMuted() ? 'Turn sound on' : 'Turn sound off', cb: () => { toggleMute(); showSettingsModal(); } },
+      { label: 'Tips & help', cb: () => showTipModal() },
+      { label: 'Collections', cb: () => showCollectionsModal() },
+      { label: 'Reset farm', cb: () => { if (window.confirm('Start your farm over?')) { clearSave(); location.reload(); } } },
+      { label: 'Close', primary: true, cb: () => {} },
+    ],
+  );
+}
+
+function showCollectionsModal(): void {
+  const rows: Array<[string, string]> = COLLECTIONS.map((c) => {
+    const done = state.collectionsDone.includes(c.id);
+    const value = `${collectionProgress(state, c)}/${c.total}${done ? ' \u00b7 Done' : ''}`;
+    return [c.name, value];
+  });
+  hud.modal('Collections', rows, [{ label: 'Close', primary: true, cb: () => {} }]);
+}
+
 function setViewing(n: Neighbor | null): void {
   viewing = n;
   backBtn.style.display = n ? '' : 'none';
@@ -554,12 +588,33 @@ function handleTap(col: number, row: number): void {
     if (crop) {
       const st = cropStage(crop, plot.plantedAt ?? now, now, plot.watered);
       if (st.withered) {
-        hud.confirm('Withered crop', 'Clear it and start over?', 'Clear', () => {
-          clearPlot(state, col, row);
-          dialogue.say(SABA_MOISHE, lines.withered());
-          hud.toast('Cleared the withered crop.');
-          postAction();
-        });
+        hud.modal(
+          'Withered crop',
+          [['Restore it or clear it?', '']],
+          [
+            {
+              label: `Unwither \u2014 ${UNWITHER_COST} Sela`,
+              primary: true,
+              cb: () => {
+                const r = unwither(state, col, row, Date.now());
+                hud.toast(r.ok ? 'Restored!' : (r.message ?? 'Error'));
+                if (r.ok) {
+                  playFertilize();
+                  postAction();
+                }
+              },
+            },
+            {
+              label: 'Clear it',
+              cb: () => {
+                clearPlot(state, col, row);
+                dialogue.say(SABA_MOISHE, lines.withered());
+                hud.toast('Cleared the withered crop.');
+                postAction();
+              },
+            },
+          ],
+        );
         return;
       }
       if (st.grown) {
@@ -696,17 +751,6 @@ backBtn.addEventListener('click', () => {
 });
 app.appendChild(backBtn);
 
-const resetBtn = document.createElement('button');
-resetBtn.id = 'reset-btn';
-resetBtn.innerHTML = `${icon('reset')}<span>Reset</span>`;
-resetBtn.addEventListener('click', () => {
-  if (window.confirm('Start your farm over?')) {
-    clearSave();
-    location.reload();
-  }
-});
-app.appendChild(resetBtn);
-
 const expandBtn = document.createElement('button');
 expandBtn.id = 'expand-btn';
 expandBtn.innerHTML = `${icon('expand')}<span>Expand</span>`;
@@ -740,19 +784,11 @@ expandBtn.addEventListener('click', () => {
 });
 app.appendChild(expandBtn);
 
-const soundBtn = document.createElement('button');
-soundBtn.id = 'sound-btn';
-soundBtn.innerHTML = isMuted() ? icon('soundOff', 18) : icon('soundOn', 18);
-soundBtn.addEventListener('click', () => {
-  soundBtn.innerHTML = toggleMute() ? icon('soundOff', 18) : icon('soundOn', 18);
-});
-app.appendChild(soundBtn);
-
-const helpBtn = document.createElement('button');
-helpBtn.id = 'help-btn';
-helpBtn.innerHTML = icon('help', 18);
-helpBtn.addEventListener('click', showTipModal);
-app.appendChild(helpBtn);
+const settingsBtn = document.createElement('button');
+settingsBtn.id = 'settings-btn';
+settingsBtn.innerHTML = icon('settings', 18);
+settingsBtn.addEventListener('click', showSettingsModal);
+app.appendChild(settingsBtn);
 
 const tutorialEl = document.createElement('div');
 tutorialEl.id = 'tutorial';

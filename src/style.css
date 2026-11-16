@@ -380,10 +380,11 @@ canvas {
   animation: levelup-pop 1.9s ease-out forwards;
 }
 
-#sound-btn {
+#sound-btn,
+#settings-btn {
   position: fixed;
   right: 12px;
-  top: calc(env(safe-area-inset-top) + 132px);
+  top: calc(env(safe-area-inset-top) + 52px);
   z-index: 12;
   border: 0;
   border-radius: 999px;
@@ -441,6 +442,37 @@ canvas {
 .sc-stars {
   color: #d4a017;
   letter-spacing: 1px;
+}
+
+.tabs {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.tab {
+  flex: 1;
+  padding: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--muted-ink);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.tab.active {
+  background: var(--blue);
+  color: #fff;
+}
+
+.tab-pane {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 /* ---- motion + accessibility ---- */

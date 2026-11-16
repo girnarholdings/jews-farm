@@ -1,4 +1,8 @@
 import type { FarmState, Stats } from '../types';
+import { ITEMS } from '../data/items';
+import { SHEEP_COLORS } from '../../render/palette';
+import { MASTERY_MAX } from './mastery';
+import { addCoins, addSela } from './economy';
 
 export interface Ribbon {
   id: string;
@@ -17,7 +21,6 @@ export const RIBBONS: Ribbon[] = [
   { id: 'r_level', name: 'Master Farmer', desc: 'Reach level 10', stat: 'level', need: 10 },
 ];
 
-/** Marks any newly-earned ribbons and returns them. */
 export function checkRibbons(s: FarmState): Ribbon[] {
   const earned: Ribbon[] = [];
   for (const r of RIBBONS) {
@@ -29,4 +32,54 @@ export function checkRibbons(s: FarmState): Ribbon[] {
     }
   }
   return earned;
+}
+
+export interface CollectionDef {
+  id: string;
+  name: string;
+  desc: string;
+  total: number;
+  coins: number;
+  sela: number;
+}
+
+export const COLLECTIONS: CollectionDef[] = [
+  { id: 'sheep', name: 'Flock of Colors', desc: 'Breed all sheep colors', total: Object.keys(SHEEP_COLORS).length, coins: 2000, sela: 5 },
+  { id: 'trees', name: 'The Orchard', desc: 'Plant every kind of tree', total: 27, coins: 3000, sela: 8 },
+  { id: 'animals', name: 'The Barnyard', desc: 'Raise every animal', total: 11, coins: 1500, sela: 4 },
+  { id: 'mastery', name: 'Master Farmer', desc: 'Master 10 crops to 3 stars', total: 10, coins: 2500, sela: 6 },
+];
+
+export function collectionProgress(s: FarmState, c: CollectionDef): number {
+  switch (c.id) {
+    case 'sheep':
+      return s.sheepColors.length;
+    case 'trees': {
+      const ids = new Set(s.objects.filter((o) => ITEMS[o.itemId]?.kind === 'tree').map((o) => o.itemId));
+      return ids.size;
+    }
+    case 'animals': {
+      const ids = new Set(s.objects.filter((o) => ITEMS[o.itemId]?.kind === 'animal').map((o) => o.itemId));
+      return ids.size;
+    }
+    case 'mastery':
+      return Object.values(s.mastery).filter((n) => n >= MASTERY_MAX).length;
+    default:
+      return 0;
+  }
+}
+
+/** Marks any newly-completed collections and grants their rewards. */
+export function checkCollections(s: FarmState): CollectionDef[] {
+  const done: CollectionDef[] = [];
+  for (const c of COLLECTIONS) {
+    if (s.collectionsDone.includes(c.id)) continue;
+    if (collectionProgress(s, c) >= c.total) {
+      s.collectionsDone.push(c.id);
+      if (c.coins) addCoins(s, c.coins);
+      if (c.sela) addSela(s, c.sela);
+      done.push(c);
+    }
+  }
+  return done;
 }
