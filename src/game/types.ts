@@ -109,6 +109,8 @@ export interface FarmState {
   stats: Stats;
   ribbons: string[];
   lastGiftDay?: string;
+  giftStreak: number;
+  tutorial: { step: number; done: boolean };
   bushels: Record<string, number>;
   crafts: Record<string, number>;
   craftQueue: CraftJob[];

@@ -8,14 +8,15 @@ import { RECIPES, recipesFor } from './game/data/recipes';
 import { makeNeighbors, type Neighbor } from './game/data/neighbors';
 import { cropStage, objectState } from './game/systems/growth';
 import { plow, plant, harvest, clearPlot, placeObject, harvestObject, sellObject } from './game/systems/farming';
-import { addCoins, addXp } from './game/systems/economy';
+import { addCoins, addXp, PLOW_COST } from './game/systems/economy';
 import { saveState, loadState, clearSave } from './core/save';
 import { Hud } from './ui/hud';
 import { DialogueBox } from './ui/dialogue';
 import { QuestPanel } from './ui/quests';
 import { SABA_MOISHE, lines } from './game/dialogue';
 import { initQuestState, recordTask, currentQuest, isComplete, completeQuest } from './game/systems/quests';
-import { claimDailyGift } from './game/systems/gifts';
+import { claimDailyGift, dailyRewardDue, rewardForDay, upcomingGiftDay } from './game/systems/gifts';
+import { computeReturnSummary } from './game/systems/summary';
 import { checkRibbons } from './game/systems/collections';
 import { hasBreedPair, startBreeding, collectLamb } from './game/systems/breeding';
 import { bushelCount, craftCount, sellProduce } from './game/systems/market';
@@ -56,6 +57,8 @@ function newState(): FarmState {
     quests: initQuestState(),
     stats: { plows: 0, plants: 0, harvests: 0, objects: 0, coinsEarned: 0 },
     ribbons: [],
+    giftStreak: 0,
+    tutorial: { step: 0, done: false },
     bushels: {},
     crafts: {},
     craftQueue: [],
@@ -78,6 +81,8 @@ if (!state.ribbons) state.ribbons = [];
 if (!state.bushels) state.bushels = {};
 if (!state.crafts) state.crafts = {};
 if (!state.craftQueue) state.craftQueue = [];
+if (state.giftStreak == null) state.giftStreak = 0;
+if (state.tutorial == null) state.tutorial = { step: 0, done: true };
 
 const neighbors = makeNeighbors();
 let pendingItem: string | null = null;
@@ -263,6 +268,54 @@ function showNeighborsModal(): void {
   );
 }
 
+const TUTORIAL_TEXT = [
+  '\u{1F44B} Shalom! Tap an empty grass tile to plow it.',
+  'Now tap the plowed plot to plant a seed.',
+  'Your crop is growing \u2014 tap it when it\u2019s ready to harvest.',
+];
+
+function advanceTutorial(): void {
+  if (state.tutorial.done) return;
+  state.tutorial.step++;
+  if (state.tutorial.step >= 3) state.tutorial.done = true;
+}
+
+function showReturnModal(): boolean {
+  const summary = computeReturnSummary(state, Date.now());
+  const due = dailyRewardDue(state);
+  const hasSummary = summary.ready + summary.growing + summary.withered > 0;
+  if (!hasSummary && !due) return false;
+  const rows: Array<[string, string]> = [];
+  if (summary.ready) rows.push(['Finished while away', summary.readyNames.join(', ')]);
+  if (summary.growing) rows.push(['Still growing', `${summary.growing}`]);
+  if (summary.withered) rows.push(['Withered', `${summary.withered}`]);
+  if (due) {
+    const day = upcomingGiftDay(state);
+    const r = rewardForDay(day);
+    rows.push([`Daily reward (Day ${day})`, `+${r.coins}\u20aa +${r.sela} Sela`]);
+  }
+  hud.modal(
+    'Welcome back!',
+    rows,
+    due
+      ? [
+          {
+            label: 'Claim daily reward',
+            primary: true,
+            cb: () => {
+              const g = claimDailyGift(state);
+              if (g) {
+                hud.toast(`+${g.coins}\u20aa +${g.sela} Sela!`);
+                postAction();
+              }
+            },
+          },
+        ]
+      : [{ label: 'OK', primary: true, cb: () => {} }],
+  );
+  return true;
+}
+
 function setViewing(n: Neighbor | null): void {
   viewing = n;
   backBtn.style.display = n ? '' : 'none';
@@ -355,6 +408,7 @@ function handleTap(col: number, row: number): void {
         if (r.ok) {
           dialogue.say(SABA_MOISHE, lines.plant());
           recordTask(state.quests, 'plant', cropId);
+          advanceTutorial();
           finishAction();
         }
       });
@@ -364,23 +418,28 @@ function handleTap(col: number, row: number): void {
     if (crop) {
       const st = cropStage(crop, plot.plantedAt ?? now, now, plot.watered);
       if (st.withered) {
-        clearPlot(state, col, row);
-        dialogue.say(SABA_MOISHE, lines.withered());
-        hud.toast('Cleared the withered crop.');
-        postAction();
+        hud.confirm('Withered crop', 'Clear it and start over?', 'Clear', () => {
+          clearPlot(state, col, row);
+          dialogue.say(SABA_MOISHE, lines.withered());
+          hud.toast('Cleared the withered crop.');
+          postAction();
+        });
         return;
       }
       if (st.grown) {
-        const r = harvest(state, col, row, now);
-        hud.toast(r.ok ? `Harvested! +${crop.sell}\u20aa` : (r.message ?? 'Error'));
-        if (r.ok) {
-          dialogue.say(SABA_MOISHE, lines.harvest());
-          recordTask(state.quests, 'harvest', plot.cropId);
-          finishAction();
-        }
+        hud.confirm(crop.name, `Harvest for +${crop.sell}\u20aa?`, 'Harvest', () => {
+          const r = harvest(state, col, row, now);
+          hud.toast(r.ok ? `Harvested! +${crop.sell}\u20aa` : (r.message ?? 'Error'));
+          if (r.ok) {
+            dialogue.say(SABA_MOISHE, lines.harvest());
+            recordTask(state.quests, 'harvest', plot.cropId);
+            advanceTutorial();
+            finishAction();
+          }
+        });
         return;
       }
-      const remainMin = Math.max(1, Math.ceil((crop.growSeconds - (now - (plot.plantedAt ?? now)) / 1000) / 60));
+      const remainMin = Math.max(1, Math.ceil((crop.growSeconds * (plot.watered ? 0.5 : 1) - (now - (plot.plantedAt ?? now)) / 1000) / 60));
       hud.toast(`Still growing \u2014 ~${remainMin}m to go. Patience, a chaim.`);
     }
     return;
@@ -395,13 +454,15 @@ function handleTap(col: number, row: number): void {
     }
     if (item.kind === 'tree' || item.kind === 'animal') {
       if (objectState(item, obj.plantedAt, now) === 'grown') {
-        const r = harvestObject(state, obj.id, now);
-        hud.toast(r.ok ? `${item.product} collected! +${item.yieldCoins}\u20aa` : (r.message ?? 'Error'));
-        if (r.ok) {
-          dialogue.say(SABA_MOISHE, lines.harvest());
-          recordTask(state.quests, 'harvestObject', obj.itemId);
-          finishAction();
-        }
+        hud.confirm(item.name, `Collect ${item.product} for +${item.yieldCoins}\u20aa?`, 'Collect', () => {
+          const r = harvestObject(state, obj.id, now);
+          hud.toast(r.ok ? `${item.product} collected! +${item.yieldCoins}\u20aa` : (r.message ?? 'Error'));
+          if (r.ok) {
+            dialogue.say(SABA_MOISHE, lines.harvest());
+            recordTask(state.quests, 'harvestObject', obj.itemId);
+            finishAction();
+          }
+        });
       } else {
         sellObjectAt(obj.id, item.name, item.cost);
       }
@@ -411,14 +472,17 @@ function handleTap(col: number, row: number): void {
     return;
   }
 
-  const r = plow(state, col, row);
-  hud.toast(r.message ?? 'Plowed. (+1 XP)');
-  if (!r.ok) {
-    dialogue.say(SABA_MOISHE, lines.poor());
-  } else {
-    recordTask(state.quests, 'plow');
-    finishAction();
-  }
+  hud.confirm('Plow this plot?', `Costs ${PLOW_COST}\u20aa.`, 'Plow', () => {
+    const r = plow(state, col, row);
+    hud.toast(r.message ?? 'Plowed. (+1 XP)');
+    if (!r.ok) {
+      dialogue.say(SABA_MOISHE, lines.poor());
+    } else {
+      recordTask(state.quests, 'plow');
+      advanceTutorial();
+      finishAction();
+    }
+  });
 }
 
 const input = new Input(renderer.canvas, renderer, {
@@ -503,9 +567,14 @@ expandBtn.addEventListener('click', () => {
 });
 app.appendChild(expandBtn);
 
+const tutorialEl = document.createElement('div');
+tutorialEl.id = 'tutorial';
+tutorialEl.style.display = 'none';
+app.appendChild(tutorialEl);
+
 renderer.fit(state);
 
-const gift = claimDailyGift(state);
+const isFresh = !loaded;
 save();
 
 // debug/testing hook
@@ -523,15 +592,21 @@ function frame(): void {
   renderer.render(viewing ? viewing.farm : state, Date.now());
   hud.update(state);
   questPanel.update(state);
+  if (!state.tutorial.done) {
+    tutorialEl.textContent = TUTORIAL_TEXT[state.tutorial.step] ?? '';
+    tutorialEl.style.display = '';
+  } else {
+    tutorialEl.style.display = 'none';
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
 window.setTimeout(() => {
-  if (gift) {
-    dialogue.say(SABA_MOISHE, `A sheynem dank for coming back! Daily gift: +${gift.coins}\u20aa, +${gift.sela} Sela.`);
-  } else {
-    dialogue.say(SABA_MOISHE, loaded ? lines.greetBack() : lines.greetFirst());
+  if (isFresh) {
+    dialogue.say(SABA_MOISHE, lines.greetFirst());
+  } else if (!showReturnModal()) {
+    dialogue.say(SABA_MOISHE, lines.greetBack());
   }
 }, 700);
 

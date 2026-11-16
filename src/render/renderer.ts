@@ -16,6 +16,14 @@ const DECOR_COLORS: Record<string, string> = {
   bench: '#8a6a4a',
 };
 
+function fmtTime(seconds: number): string {
+  const m = Math.ceil(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm === 0 ? `${h}h` : `${h}h ${rm}m`;
+}
+
 export class Renderer {
   readonly canvas: HTMLCanvasElement;
   readonly ctx: CanvasRenderingContext2D;
@@ -127,6 +135,18 @@ export class Renderer {
     }
   }
 
+  private drawTimer(x: number, y: number, text: string, color: string): void {
+    const ctx = this.ctx;
+    ctx.font = '10px system-ui, sans-serif';
+    const w = ctx.measureText(text).width + 10;
+    ctx.fillStyle = 'rgba(20,36,22,0.8)';
+    ctx.fillRect(x - w / 2, y - 40, w, 14);
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y - 33);
+  }
+
   private drawCrop(
     col: number,
     row: number,
@@ -142,6 +162,7 @@ export class Renderer {
       this.ctx.beginPath();
       this.ctx.arc(c.x, c.y - TILE_H / 2 + 8, 7, 0, Math.PI * 2);
       this.ctx.fill();
+      this.drawTimer(c.x, c.y, 'Withered', '#f0a0a0');
       return;
     }
     const h = stage.grown ? 20 : 6 + stage.progress * 12;
@@ -165,6 +186,11 @@ export class Renderer {
       this.ctx.beginPath();
       this.ctx.arc(c.x, c.y - h, leafR + 3, 0, Math.PI * 2);
       this.ctx.fill();
+      this.drawTimer(c.x, c.y, 'Ready!', '#ffe27a');
+    } else {
+      const scale = watered ? 0.5 : 1;
+      const remaining = crop.growSeconds * scale - (now - plantedAt) / 1000;
+      this.drawTimer(c.x, c.y, fmtTime(remaining), '#fff');
     }
   }
 

@@ -3,16 +3,34 @@ import type { FarmState } from '../types';
 export interface Gift {
   coins: number;
   sela: number;
+  day: number;
 }
 
-/** Grants the once-per-day gift. Returns the granted amounts, or null if already claimed today. */
+export function rewardForDay(day: number): { coins: number; sela: number } {
+  return {
+    coins: Math.min(300, 100 + (day - 1) * 50),
+    sela: day >= 5 ? 3 : day >= 3 ? 2 : 1,
+  };
+}
+
+export function dailyRewardDue(s: FarmState): boolean {
+  return s.lastGiftDay !== new Date().toDateString();
+}
+
+export function upcomingGiftDay(s: FarmState): number {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return s.lastGiftDay === yesterday.toDateString() ? s.giftStreak + 1 : 1;
+}
+
 export function claimDailyGift(s: FarmState): Gift | null {
-  const today = new Date().toDateString();
-  if (s.lastGiftDay === today) return null;
-  const coins = 100 + Math.floor(Math.random() * 901); // 100–1000
-  const sela = 1 + Math.floor(Math.random() * 5); // 1–5
-  s.coins = Math.min(999_999_999, s.coins + coins);
-  s.sela = Math.min(99_999, s.sela + sela);
-  s.lastGiftDay = today;
-  return { coins, sela };
+  if (!dailyRewardDue(s)) return null;
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  s.giftStreak = s.lastGiftDay === yesterday.toDateString() ? s.giftStreak + 1 : 1;
+  const r = rewardForDay(s.giftStreak);
+  s.coins = Math.min(999_999_999, s.coins + r.coins);
+  s.sela = Math.min(99_999, s.sela + r.sela);
+  s.lastGiftDay = new Date().toDateString();
+  return { ...r, day: s.giftStreak };
 }

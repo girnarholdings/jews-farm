@@ -24,6 +24,8 @@ function farm(cols: number, rows: number): FarmState {
     quests: { completed: [], progress: {} },
     stats: { plows: 0, plants: 0, harvests: 0, objects: 0, coinsEarned: 0 },
     ribbons: [],
+    giftStreak: 0,
+    tutorial: { step: 0, done: true },
     bushels: {},
     crafts: {},
     craftQueue: [],
