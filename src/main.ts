@@ -7,10 +7,10 @@ import { ITEMS, itemList } from './game/data/items';
 import { RECIPES, recipesFor } from './game/data/recipes';
 import { makeNeighbors, type Neighbor } from './game/data/neighbors';
 import { cropStage, objectState } from './game/systems/growth';
-import { plow, plant, harvest, clearPlot, placeObject, harvestObject, sellObject } from './game/systems/farming';
+import { plow, plant, harvest, clearPlot, placeObject, harvestObject, sellObject, instagrow, INSTAGROW_COST } from './game/systems/farming';
 import { addCoins, addXp, PLOW_COST } from './game/systems/economy';
 import { saveState, loadState, clearSave } from './core/save';
-import { unlock, playPlant, playHarvest, playLevelUp, playError } from './core/audio';
+import { unlock, playPlant, playHarvest, playLevelUp, playError, toggleMute } from './core/audio';
 import { Hud } from './ui/hud';
 import { DialogueBox } from './ui/dialogue';
 import { QuestPanel } from './ui/quests';
@@ -56,6 +56,7 @@ function newState(): FarmState {
     ribbons: [],
     giftStreak: 0,
     tutorial: { step: 0, done: false },
+    mastery: {},
     bushels: {},
     crafts: {},
     craftQueue: [],
@@ -80,6 +81,7 @@ if (!state.crafts) state.crafts = {};
 if (!state.craftQueue) state.craftQueue = [];
 if (state.giftStreak == null) state.giftStreak = 0;
 if (state.tutorial == null) state.tutorial = { step: 0, done: true };
+if (!state.mastery) state.mastery = {};
 
 const neighbors = makeNeighbors();
 let pendingItem: string | null = null;
@@ -410,7 +412,7 @@ function handleTap(col: number, row: number): void {
 
   if (plot) {
     if (plot.state === 'plowed') {
-      hud.showSeeds(unlockedCrops(state.level), state.level, (cropId) => {
+      hud.showSeeds(unlockedCrops(state.level), state.level, state.mastery, (cropId) => {
         const r = plant(state, col, row, cropId, Date.now());
         hud.toast(r.message ?? 'Planted!');
         if (r.ok) {
@@ -449,8 +451,24 @@ function handleTap(col: number, row: number): void {
         });
         return;
       }
-      const remainMin = Math.max(1, Math.ceil((crop.growSeconds * (plot.watered ? 0.5 : 1) - (now - (plot.plantedAt ?? now)) / 1000) / 60));
-      hud.toast(`Still growing \u2014 ~${remainMin}m to go. Patience, a chaim.`);
+      const scale = plot.watered ? 0.5 : 1;
+      const remainMin = Math.max(1, Math.ceil((crop.growSeconds * scale - (now - (plot.plantedAt ?? now)) / 1000) / 60));
+      hud.modal(
+        crop.name,
+        [['Status', `Still growing \u2014 ~${remainMin}m to go`]],
+        [
+          {
+            label: `Instagrow \u2014 ${INSTAGROW_COST} Sela`,
+            primary: true,
+            cb: () => {
+              const r = instagrow(state, col, row, Date.now());
+              hud.toast(r.ok ? 'Instagrow! It is ready.' : (r.message ?? 'Error'));
+              if (r.ok) postAction();
+            },
+          },
+          { label: 'Close', cb: () => {} },
+        ],
+      );
     }
     return;
   }
@@ -578,6 +596,14 @@ expandBtn.addEventListener('click', () => {
   );
 });
 app.appendChild(expandBtn);
+
+const soundBtn = document.createElement('button');
+soundBtn.id = 'sound-btn';
+soundBtn.textContent = '\u{1F50A}';
+soundBtn.addEventListener('click', () => {
+  soundBtn.textContent = toggleMute() ? '\u{1F507}' : '\u{1F50A}';
+});
+app.appendChild(soundBtn);
 
 const tutorialEl = document.createElement('div');
 tutorialEl.id = 'tutorial';

@@ -1,5 +1,11 @@
 // Procedural sounds via Web Audio — no audio files, keeps the bundle tiny.
 let ctx: AudioContext | null = null;
+let muted = false;
+
+export function toggleMute(): boolean {
+  muted = !muted;
+  return muted;
+}
 
 function ensureCtx(): AudioContext | null {
   if (!ctx) {
@@ -14,6 +20,7 @@ function ensureCtx(): AudioContext | null {
 }
 
 function tone(freq: number, dur: number, type: OscillatorType = 'sine', vol = 0.15): void {
+  if (muted) return;
   const c = ensureCtx();
   if (!c) return;
   const o = c.createOscillator();

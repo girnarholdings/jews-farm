@@ -1,5 +1,6 @@
 import type { CropDef, FarmState, ItemDef } from '../game/types';
 import { xpForLevel, MAX_LEVEL } from '../game/data/levels';
+import { masteryStars } from '../game/systems/mastery';
 
 export class Hud {
   private levelEl: HTMLElement;
@@ -71,7 +72,7 @@ export class Hud {
     this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove('show'), 2400);
   }
 
-  showSeeds(crops: CropDef[], level: number, onPick: (id: string) => void): void {
+  showSeeds(crops: CropDef[], level: number, mastery: Record<string, number>, onPick: (id: string) => void): void {
     this.modalEl.querySelector('#modal-title')!.textContent = 'Plant a seed';
     this.modalBody.innerHTML = '';
     for (const c of crops) {
@@ -81,7 +82,8 @@ export class Hud {
         btn.classList.add('locked');
         btn.innerHTML = `<span class="sc-name">${c.name}</span><span class="sc-lock">Lv ${c.unlockLevel}</span>`;
       } else {
-        btn.innerHTML = `<span class="sc-name">${c.name} <small>${c.hebrew}</small></span><span class="sc-cost">${c.seedCost}₪</span><span class="sc-sell">+${c.sell}₪</span>`;
+        const stars = masteryStars(mastery[c.id] ?? 0);
+        btn.innerHTML = `<span class="sc-name">${c.name} <span class="sc-stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span> <small>${c.hebrew}</small></span><span class="sc-cost">${c.seedCost}₪</span><span class="sc-sell">+${c.sell}₪</span>`;
         btn.addEventListener('click', () => {
           this.hideModal();
           onPick(c.id);

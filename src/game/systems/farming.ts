@@ -3,6 +3,7 @@ import { CROPS } from '../data/crops';
 import { ITEMS } from '../data/items';
 import { addCoins, addXp, spendCoins, spendSela, PLOW_COST, PLOW_XP } from './economy';
 import { cropStage, objectState } from './growth';
+import { MASTERY_BONUS, MASTERY_MAX } from './mastery';
 
 export interface ActionResult {
   ok: boolean;
@@ -53,10 +54,12 @@ export function harvest(s: FarmState, col: number, row: number, now: number): Ac
   if (!plot || plot.state !== 'planted') return { ok: false, message: 'Nothing to harvest' };
   const crop = CROPS[plot.cropId ?? ''];
   if (!crop) return { ok: false, message: 'Unknown crop' };
-  const stage = cropStage(crop, plot.plantedAt ?? now, now);
+  const stage = cropStage(crop, plot.plantedAt ?? now, now, plot.watered);
   if (stage.withered) return { ok: false, message: 'Withered — clear it' };
   if (!stage.grown) return { ok: false, message: 'Still growing' };
-  addCoins(s, crop.sell);
+  const mastered = (s.mastery[crop.id] ?? 0) >= MASTERY_MAX;
+  addCoins(s, crop.sell + (mastered ? Math.round(crop.sell * MASTERY_BONUS) : 0));
+  s.mastery[crop.id] = (s.mastery[crop.id] ?? 0) + 1;
   s.stats.harvests++;
   if (Math.random() < 0.15) s.bushels[crop.id] = (s.bushels[crop.id] ?? 0) + 1;
   s.plots[col + row * s.cols] = null;
@@ -114,5 +117,18 @@ export function sellObject(s: FarmState, id: number): ActionResult {
   if (!item) return { ok: false, message: 'Unknown item' };
   addCoins(s, Math.round(item.cost * 0.05));
   s.objects.splice(i, 1);
+  return { ok: true };
+}
+
+export const INSTAGROW_COST = 4; // Sela
+
+export function instagrow(s: FarmState, col: number, row: number, now: number): ActionResult {
+  const plot = s.plots[col + row * s.cols];
+  if (!plot || plot.state !== 'planted' || plot.cropId == null) return { ok: false, message: 'Nothing to grow' };
+  const crop = CROPS[plot.cropId];
+  if (!crop) return { ok: false, message: 'Unknown crop' };
+  if (!spendSela(s, INSTAGROW_COST)) return { ok: false, message: 'Not enough Sela' };
+  const scale = plot.watered ? 0.5 : 1;
+  plot.plantedAt = now - crop.growSeconds * scale * 1000 - 1000;
   return { ok: true };
 }

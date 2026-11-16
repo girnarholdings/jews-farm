@@ -147,6 +147,15 @@ export class Renderer {
     ctx.fillText(text, x, y - 33);
   }
 
+  private drawProgressBar(x: number, y: number, progress: number): void {
+    const ctx = this.ctx;
+    const w = 36;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(x - w / 2, y, w, 4);
+    ctx.fillStyle = '#4caf50';
+    ctx.fillRect(x - w / 2, y, w * Math.min(1, progress), 4);
+  }
+
   private drawCrop(
     col: number,
     row: number,
@@ -191,6 +200,7 @@ export class Renderer {
       const scale = watered ? 0.5 : 1;
       const remaining = crop.growSeconds * scale - (now - plantedAt) / 1000;
       this.drawTimer(c.x, c.y, fmtTime(remaining), '#fff');
+      this.drawProgressBar(c.x, c.y - 20, stage.progress);
     }
   }
 

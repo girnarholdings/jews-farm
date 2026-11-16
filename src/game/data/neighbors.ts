@@ -22,6 +22,7 @@ function farm(cols: number, rows: number): FarmState {
     ribbons: [],
     giftStreak: 0,
     tutorial: { step: 0, done: true },
+    mastery: {},
     bushels: {},
     crafts: {},
     craftQueue: [],
