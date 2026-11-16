@@ -1,0 +1,6 @@
+node_modules/
+dist/
+study/
+icon_gen.py
+.DS_Store
+*.log

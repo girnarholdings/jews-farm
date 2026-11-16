@@ -1,0 +1,543 @@
+import './style.css';
+import { Renderer } from './render/renderer';
+import { Input } from './core/input';
+import type { FarmState, PlacedObject } from './game/types';
+import { CROPS, unlockedCrops } from './game/data/crops';
+import { ITEMS, itemList } from './game/data/items';
+import { RECIPES, recipesFor } from './game/data/recipes';
+import { makeNeighbors, type Neighbor } from './game/data/neighbors';
+import { cropStage, objectState } from './game/systems/growth';
+import { plow, plant, harvest, clearPlot, placeObject, harvestObject, sellObject } from './game/systems/farming';
+import { addCoins, addXp } from './game/systems/economy';
+import { saveState, loadState, clearSave } from './core/save';
+import { Hud } from './ui/hud';
+import { DialogueBox } from './ui/dialogue';
+import { QuestPanel } from './ui/quests';
+import { SABA_MOISHE, lines } from './game/dialogue';
+import { initQuestState, recordTask, currentQuest, isComplete, completeQuest } from './game/systems/quests';
+import { claimDailyGift } from './game/systems/gifts';
+import { checkRibbons } from './game/systems/collections';
+import { hasBreedPair, startBreeding, collectLamb } from './game/systems/breeding';
+import { bushelCount, craftCount, sellProduce } from './game/systems/market';
+import { canCraft, startCraft, collectCrafts } from './game/systems/crafting';
+import { waterNeighborCrop, helpHarvestNeighbor, neighborAnimalAct } from './game/systems/neighbors';
+import { expandFarm, expansionCost } from './game/systems/expand';
+
+declare global {
+  interface Window {
+    __farm?: {
+      state: FarmState;
+      save: () => void;
+      renderer: Renderer;
+      showBreedingModal: (pen: PlacedObject) => void;
+      showMarketModal: () => void;
+      showCraftingModal: (buildingId: string, buildingObjId: number) => void;
+      showNeighborsModal: () => void;
+    };
+  }
+}
+
+function newState(): FarmState {
+  const cols = 12;
+  const rows = 12;
+  return {
+    cols,
+    rows,
+    plots: new Array<null>(cols * rows).fill(null),
+    objects: [],
+    coins: 200,
+    sela: 5,
+    xp: 0,
+    level: 1,
+    energy: 150,
+    maxEnergy: 150,
+    inventory: {},
+    lastSeen: Date.now(),
+    quests: initQuestState(),
+    stats: { plows: 0, plants: 0, harvests: 0, objects: 0, coinsEarned: 0 },
+    ribbons: [],
+    bushels: {},
+    crafts: {},
+    craftQueue: [],
+  };
+}
+
+const app = document.getElementById('app');
+if (!app) throw new Error('#app missing');
+
+const renderer = new Renderer(app);
+const hud = new Hud(app);
+const dialogue = new DialogueBox(app);
+const questPanel = new QuestPanel(app);
+
+const loaded = loadState();
+const state: FarmState = loaded ?? newState();
+if (!state.quests) state.quests = initQuestState();
+if (!state.stats) state.stats = { plows: 0, plants: 0, harvests: 0, objects: 0, coinsEarned: 0 };
+if (!state.ribbons) state.ribbons = [];
+if (!state.bushels) state.bushels = {};
+if (!state.crafts) state.crafts = {};
+if (!state.craftQueue) state.craftQueue = [];
+
+const neighbors = makeNeighbors();
+let pendingItem: string | null = null;
+let lastLevel = state.level;
+let viewing: Neighbor | null = null;
+
+function save(): void {
+  state.lastSeen = Date.now();
+  saveState(state);
+}
+
+function postAction(): void {
+  if (state.level > lastLevel) {
+    dialogue.say(SABA_MOISHE, lines.levelUp());
+    lastLevel = state.level;
+  }
+  const earned = checkRibbons(state);
+  if (earned.length) {
+    const r = earned[earned.length - 1];
+    dialogue.say(SABA_MOISHE, `Ribbon earned: ${r.name} \u2014 ${r.desc}. Mazel tov!`);
+  }
+  save();
+}
+
+function finishAction(): void {
+  const q = currentQuest(state.quests);
+  const done = q && isComplete(q, state.quests);
+  if (done && q) completeQuest(state, q);
+  postAction();
+  if (done && q) dialogue.say(SABA_MOISHE, `Mazel tov! "${q.name}" complete \u2014 kol hakavod!`);
+}
+
+function sellObjectAt(id: number, name: string, cost: number): void {
+  hud.confirm(name, `Sell it for ${Math.round(cost * 0.05)}\u20aa?`, 'Sell', () => {
+    const r = sellObject(state, id);
+    hud.toast(r.message ?? 'Sold!');
+    postAction();
+  });
+}
+
+function showBreedingModal(pen: PlacedObject): void {
+  const now = Date.now();
+  if (pen.breeding && now < pen.breeding) {
+    const remain = Math.max(1, Math.ceil((pen.breeding - now) / 60000));
+    hud.modal('Sheep Pen', [['Breeding', `~${remain}m remaining`]], []);
+    return;
+  }
+  if (pen.breeding && now >= pen.breeding) {
+    hud.modal('Sheep Pen', [['A lamb is ready!', '\ud83d\udc11']], [
+      {
+        label: 'Collect Lamb',
+        primary: true,
+        cb: () => {
+          const ok = collectLamb(state, pen, Date.now());
+          hud.toast(ok ? 'Mazel tov! A new lamb joined the flock.' : 'No empty tile nearby \u2014 clear some space.');
+          postAction();
+        },
+      },
+    ]);
+    return;
+  }
+  const pair = hasBreedPair(state);
+  hud.modal(
+    'Sheep Pen',
+    [
+      ['Ram', state.objects.some((o) => o.itemId === 'ram') ? '\u2713' : '\u2717'],
+      ['Ewe', state.objects.some((o) => o.itemId === 'ewe') ? '\u2713' : '\u2717'],
+      ['Breeding time', '24 hours'],
+    ],
+    pair
+      ? [
+          {
+            label: 'Breed',
+            primary: true,
+            cb: () => {
+              if (startBreeding(pen, Date.now())) {
+                hud.toast('Breeding started! Come back in a day.');
+                save();
+              }
+            },
+          },
+        ]
+      : [],
+  );
+}
+
+function showMarketModal(): void {
+  const bc = bushelCount(state);
+  const cc = craftCount(state);
+  const rows: Array<[string, string]> = [
+    ['Bushels', `${bc}`],
+    ['Crafted goods', `${cc}`],
+  ];
+  hud.modal(
+    'Market Stall',
+    rows,
+    bc + cc > 0
+      ? [
+          {
+            label: 'Sell all produce',
+            primary: true,
+            cb: () => {
+              const gained = sellProduce(state);
+              hud.toast(gained > 0 ? `Sold! +${gained}\u20aa` : 'Nothing to sell yet.');
+              postAction();
+            },
+          },
+        ]
+      : [],
+  );
+}
+
+function showCraftingModal(buildingId: string, buildingObjId: number): void {
+  const body = hud.beginModal(ITEMS[buildingId].name);
+  const now = Date.now();
+
+  const ready = state.craftQueue.filter((j) => j.buildingId === buildingObjId && j.finishAt <= now);
+  if (ready.length) {
+    const btn = document.createElement('button');
+    btn.textContent = `Collect ${ready.length} ready`;
+    btn.style.cssText =
+      'grid-column:1/-1;padding:12px;border:0;border-radius:12px;background:#2e7d32;color:#fff;font-weight:700;';
+    btn.addEventListener('click', () => {
+      const done = collectCrafts(state, buildingObjId, Date.now());
+      hud.toast(`Collected ${done.length} craft${done.length === 1 ? '' : 's'}!`);
+      postAction();
+      showCraftingModal(buildingId, buildingObjId);
+    });
+    body.appendChild(btn);
+  }
+
+  for (const r of recipesFor(buildingId)) {
+    const have = state.bushels[r.input] ?? 0;
+    const row = document.createElement('div');
+    row.style.cssText =
+      'grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid rgba(0,0,0,0.08);';
+    row.innerHTML = `<div><div style="font-weight:600">${r.name} <small style="color:#888">${r.hebrew}</small></div><div style="font-size:12px;color:#666">${have}/${r.inputQty} ${r.input} \u00b7 ${Math.round(r.cookSeconds / 60)}m \u00b7 ${r.outputValue}\u20aa</div></div>`;
+    const craftBtn = document.createElement('button');
+    craftBtn.textContent = 'Craft';
+    craftBtn.disabled = !canCraft(state, r.id);
+    craftBtn.style.cssText = `padding:8px 12px;border:0;border-radius:10px;font-weight:700;${
+      canCraft(state, r.id) ? 'background:#0038b8;color:#fff;' : 'background:#ddd;color:#999;'
+    }`;
+    craftBtn.addEventListener('click', () => {
+      if (startCraft(state, r.id, buildingObjId, Date.now())) {
+        hud.toast(`Crafting ${r.name}...`);
+        save();
+      }
+      showCraftingModal(buildingId, buildingObjId);
+    });
+    row.appendChild(craftBtn);
+    body.appendChild(row);
+  }
+
+  for (const j of state.craftQueue.filter((x) => x.buildingId === buildingObjId && x.finishAt > now)) {
+    const r = RECIPES.find((x) => x.id === j.recipeId);
+    const remain = Math.max(1, Math.ceil((j.finishAt - now) / 60000));
+    const row = document.createElement('div');
+    row.style.cssText = 'grid-column:1/-1;padding:6px 4px;font-size:12px;color:#b8860b;';
+    row.textContent = `\u23f3 ${r?.name ?? j.recipeId} \u2014 ${remain}m`;
+    body.appendChild(row);
+  }
+
+  const close = document.createElement('button');
+  close.textContent = 'Close';
+  close.style.cssText =
+    'grid-column:1/-1;padding:10px;border:0;border-radius:12px;background:rgba(0,0,0,0.08);color:#1b2a1e;';
+  close.addEventListener('click', () => hud.hideModal());
+  body.appendChild(close);
+}
+
+function showNeighborsModal(): void {
+  hud.modal(
+    'Neighbors',
+    neighbors.map((n) => [n.persona.name, n.persona.role] as [string, string]),
+    neighbors.map((n) => ({
+      label: `Visit ${n.persona.name}`,
+      cb: () => {
+        setViewing(n);
+        hud.toast(`Visiting ${n.persona.name} \u2014 tap crops to water or help harvest.`);
+      },
+    })),
+  );
+}
+
+function setViewing(n: Neighbor | null): void {
+  viewing = n;
+  backBtn.style.display = n ? '' : 'none';
+  storeBtn.style.display = n ? 'none' : '';
+  neighborsBtn.style.display = n ? 'none' : '';
+  expandBtn.style.display = n ? 'none' : '';
+  renderer.fit(n ? n.farm : state);
+}
+
+function handleNeighborTap(col: number, row: number): void {
+  const farm = viewing!.farm;
+  const now = Date.now();
+  const plot = farm.plots[col + row * farm.cols];
+  const obj = farm.objects.find((o) => o.col === col && o.row === row);
+  if (plot && plot.state === 'planted') {
+    const crop = CROPS[plot.cropId ?? ''];
+    if (crop) {
+      const st = cropStage(crop, plot.plantedAt ?? now, now, plot.watered);
+      const r = st.grown || st.withered
+        ? helpHarvestNeighbor(farm, col, row, now)
+        : waterNeighborCrop(farm, col, row, now);
+      if (r.ok) {
+        addCoins(state, r.coins);
+        addXp(state, r.xp);
+      }
+      hud.toast(r.message);
+      postAction();
+    }
+    return;
+  }
+  if (obj) {
+    const r = neighborAnimalAct(farm, obj.id, now);
+    if (r.ok) {
+      addCoins(state, r.coins);
+      addXp(state, r.xp);
+    }
+    hud.toast(r.message);
+    postAction();
+    return;
+  }
+  hud.toast('Nothing to do here.');
+}
+
+function handleBuildingTap(obj: PlacedObject): void {
+  switch (obj.itemId) {
+    case 'sheep_pen':
+      showBreedingModal(obj);
+      break;
+    case 'market_stall':
+      showMarketModal();
+      break;
+    case 'bakery':
+    case 'winery':
+    case 'oil_press':
+      showCraftingModal(obj.itemId, obj.id);
+      break;
+    default:
+      sellObjectAt(obj.id, ITEMS[obj.itemId].name, ITEMS[obj.itemId].cost);
+  }
+}
+
+function handleTap(col: number, row: number): void {
+  if (viewing) {
+    handleNeighborTap(col, row);
+    return;
+  }
+  const now = Date.now();
+  if (pendingItem) {
+    const placedId = pendingItem;
+    const r = placeObject(state, pendingItem, col, row, now);
+    if (r.ok) {
+      pendingItem = null;
+      recordTask(state.quests, 'buy', placedId);
+      finishAction();
+      hud.toast('Mazel tov! Placed.');
+    } else {
+      hud.toast(r.message ?? 'Error');
+    }
+    return;
+  }
+
+  const plot = state.plots[col + row * state.cols];
+  const obj = state.objects.find((o) => o.col === col && o.row === row);
+
+  if (plot) {
+    if (plot.state === 'plowed') {
+      hud.showSeeds(unlockedCrops(state.level), state.level, (cropId) => {
+        const r = plant(state, col, row, cropId, Date.now());
+        hud.toast(r.message ?? 'Planted!');
+        if (r.ok) {
+          dialogue.say(SABA_MOISHE, lines.plant());
+          recordTask(state.quests, 'plant', cropId);
+          finishAction();
+        }
+      });
+      return;
+    }
+    const crop = CROPS[plot.cropId ?? ''];
+    if (crop) {
+      const st = cropStage(crop, plot.plantedAt ?? now, now, plot.watered);
+      if (st.withered) {
+        clearPlot(state, col, row);
+        dialogue.say(SABA_MOISHE, lines.withered());
+        hud.toast('Cleared the withered crop.');
+        postAction();
+        return;
+      }
+      if (st.grown) {
+        const r = harvest(state, col, row, now);
+        hud.toast(r.ok ? `Harvested! +${crop.sell}\u20aa` : (r.message ?? 'Error'));
+        if (r.ok) {
+          dialogue.say(SABA_MOISHE, lines.harvest());
+          recordTask(state.quests, 'harvest', plot.cropId);
+          finishAction();
+        }
+        return;
+      }
+      const remainMin = Math.max(1, Math.ceil((crop.growSeconds - (now - (plot.plantedAt ?? now)) / 1000) / 60));
+      hud.toast(`Still growing \u2014 ~${remainMin}m to go. Patience, a chaim.`);
+    }
+    return;
+  }
+
+  if (obj) {
+    const item = ITEMS[obj.itemId];
+    if (!item) return;
+    if (item.kind === 'building') {
+      handleBuildingTap(obj);
+      return;
+    }
+    if (item.kind === 'tree' || item.kind === 'animal') {
+      if (objectState(item, obj.plantedAt, now) === 'grown') {
+        const r = harvestObject(state, obj.id, now);
+        hud.toast(r.ok ? `${item.product} collected! +${item.yieldCoins}\u20aa` : (r.message ?? 'Error'));
+        if (r.ok) {
+          dialogue.say(SABA_MOISHE, lines.harvest());
+          recordTask(state.quests, 'harvestObject', obj.itemId);
+          finishAction();
+        }
+      } else {
+        sellObjectAt(obj.id, item.name, item.cost);
+      }
+    } else {
+      sellObjectAt(obj.id, item.name, item.cost);
+    }
+    return;
+  }
+
+  const r = plow(state, col, row);
+  hud.toast(r.message ?? 'Plowed. (+1 XP)');
+  if (!r.ok) {
+    dialogue.say(SABA_MOISHE, lines.poor());
+  } else {
+    recordTask(state.quests, 'plow');
+    finishAction();
+  }
+}
+
+const input = new Input(renderer.canvas, renderer, {
+  onTapTile: handleTap,
+  onDrag: (dx, dy) => {
+    renderer.camera.x += dx;
+    renderer.camera.y += dy;
+  },
+  onPinch: (f) => {
+    renderer.camera.zoom = Math.min(3, Math.max(0.5, renderer.camera.zoom * f));
+  },
+});
+
+const storeBtn = document.createElement('button');
+storeBtn.id = 'store-btn';
+storeBtn.textContent = '🛒 Shuk';
+storeBtn.addEventListener('click', () => {
+  hud.showStore(itemList('tree'), itemList('animal'), itemList('decor'), itemList('building'), state.level, (id) => {
+    pendingItem = id;
+    hud.toast('Tap a tile to place it.');
+  });
+});
+app.appendChild(storeBtn);
+
+const neighborsBtn = document.createElement('button');
+neighborsBtn.id = 'neighbors-btn';
+neighborsBtn.textContent = '👥 Neighbors';
+neighborsBtn.addEventListener('click', showNeighborsModal);
+app.appendChild(neighborsBtn);
+
+const backBtn = document.createElement('button');
+backBtn.id = 'back-btn';
+backBtn.textContent = '← Back to my farm';
+backBtn.style.display = 'none';
+backBtn.addEventListener('click', () => {
+  setViewing(null);
+  hud.toast('Back on your farm.');
+});
+app.appendChild(backBtn);
+
+const resetBtn = document.createElement('button');
+resetBtn.id = 'reset-btn';
+resetBtn.textContent = 'Reset';
+resetBtn.addEventListener('click', () => {
+  if (window.confirm('Start your farm over?')) {
+    clearSave();
+    location.reload();
+  }
+});
+app.appendChild(resetBtn);
+
+const expandBtn = document.createElement('button');
+expandBtn.id = 'expand-btn';
+expandBtn.textContent = '⛰️ Expand';
+expandBtn.addEventListener('click', () => {
+  const cost = expansionCost(state);
+  const size = state.cols;
+  hud.modal(
+    'Expand Farm',
+    [
+      ['Current size', `${size}\u00d7${size}`],
+      ['New size', `${size + 2}\u00d7${size + 2}`],
+      ['Cost', `${cost}\u20aa`],
+    ],
+    [
+      {
+        label: `Expand for ${cost}\u20aa`,
+        primary: true,
+        cb: () => {
+          if (expandFarm(state)) {
+            renderer.fit(state);
+            hud.toast('Mazel tov! Your farm grew.');
+            postAction();
+          } else {
+            hud.toast('Not enough shekels.');
+            dialogue.say(SABA_MOISHE, lines.poor());
+          }
+        },
+      },
+    ],
+  );
+});
+app.appendChild(expandBtn);
+
+renderer.fit(state);
+
+const gift = claimDailyGift(state);
+save();
+
+// debug/testing hook
+window.__farm = {
+  state,
+  save,
+  renderer,
+  showBreedingModal,
+  showMarketModal,
+  showCraftingModal,
+  showNeighborsModal,
+};
+
+function frame(): void {
+  renderer.render(viewing ? viewing.farm : state, Date.now());
+  hud.update(state);
+  questPanel.update(state);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+window.setTimeout(() => {
+  if (gift) {
+    dialogue.say(SABA_MOISHE, `A sheynem dank for coming back! Daily gift: +${gift.coins}\u20aa, +${gift.sela} Sela.`);
+  } else {
+    dialogue.say(SABA_MOISHE, loaded ? lines.greetBack() : lines.greetFirst());
+  }
+}, 700);
+
+window.addEventListener('beforeunload', save);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') save();
+});
+
+void input;
