@@ -10,7 +10,6 @@ export interface CropDef {
   growSeconds: number;
   witherSeconds: number;
   unlockLevel: number;
-  premium: boolean;
 }
 
 export type ItemKind = 'tree' | 'animal' | 'decor' | 'building';
@@ -46,7 +45,6 @@ export interface PlacedObject {
   col: number;
   row: number;
   plantedAt: number;
-  state: ObjectState;
   variant?: string; // bred animal color
   pattern?: string; // bred animal pattern gene
   breeding?: number; // pen: breeding finishAt (epoch ms)
@@ -101,10 +99,6 @@ export interface FarmState {
   sela: number;
   xp: number;
   level: number;
-  energy: number;
-  maxEnergy: number;
-  inventory: Record<string, number>;
-  lastSeen: number;
   quests: QuestState;
   stats: Stats;
   ribbons: string[];

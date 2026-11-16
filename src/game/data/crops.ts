@@ -23,7 +23,6 @@ function crop(
     growSeconds,
     witherSeconds: Math.round(growSeconds * (WITHER_MULTIPLIER - 1)),
     unlockLevel,
-    premium: false,
   };
 }
 
@@ -102,6 +101,13 @@ export const CROPS: Record<string, CropDef> = {
   nopales: crop('nopales', 'Prickly Pear', 'צבר (Tzabar)', 80, 200, 1, 0.696, 12),
   hellebore: crop('hellebore', 'Hellebore', 'חבצלת החורף', 75, 174, 2, 0.696, 12),
   nachos: crop('nachos', 'Nachos', 'נאצ׳וס', 25, 50, 1, 0.083, 1),
+
+  // Themed additions (Seven Species + Israeli staples)
+  etrog: crop('etrog', 'Etrog (Citron)', 'אתרוג', 60, 150, 2, 2, 4),
+  sesame: crop('sesame', 'Sesame', 'שומשום (Sumsum)', 50, 120, 1, 0.5, 12),
+  jaffaorange: crop('jaffaorange', 'Jaffa Orange', 'תפוז יפו', 80, 200, 2, 1.25, 10),
+  chickpea: crop('chickpea', 'Chickpea', 'חומוס (Chimtza)', 30, 90, 2, 1, 5),
+  barley: crop('barley', 'Barley', 'שעורה (Seora)', 30, 100, 2, 2, 2),
 };
 
 export function cropList(): CropDef[] {

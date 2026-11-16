@@ -3,7 +3,6 @@ import { levelForXp } from '../data/levels';
 
 export const PLOW_COST = 15;
 export const PLOW_XP = 1;
-export const SELL_RATIO = 0.05;
 export const COINS_CAP = 999_999_999;
 export const SELA_CAP = 99_999;
 export const LEVELUP_SELA = 1; // +1 Sela per level gained

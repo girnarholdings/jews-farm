@@ -10,6 +10,7 @@ import { cropStage, objectState } from './game/systems/growth';
 import { plow, plant, harvest, clearPlot, placeObject, harvestObject, sellObject } from './game/systems/farming';
 import { addCoins, addXp, PLOW_COST } from './game/systems/economy';
 import { saveState, loadState, clearSave } from './core/save';
+import { unlock, playPlant, playHarvest, playLevelUp, playError } from './core/audio';
 import { Hud } from './ui/hud';
 import { DialogueBox } from './ui/dialogue';
 import { QuestPanel } from './ui/quests';
@@ -50,10 +51,6 @@ function newState(): FarmState {
     sela: 5,
     xp: 0,
     level: 1,
-    energy: 150,
-    maxEnergy: 150,
-    inventory: {},
-    lastSeen: Date.now(),
     quests: initQuestState(),
     stats: { plows: 0, plants: 0, harvests: 0, objects: 0, coinsEarned: 0 },
     ribbons: [],
@@ -90,12 +87,21 @@ let lastLevel = state.level;
 let viewing: Neighbor | null = null;
 
 function save(): void {
-  state.lastSeen = Date.now();
   saveState(state);
+}
+
+function celebrateLevel(level: number): void {
+  const el = document.createElement('div');
+  el.id = 'levelup';
+  el.textContent = `\u2B50 LEVEL ${level}! \u2B50`;
+  document.body.appendChild(el);
+  window.setTimeout(() => el.remove(), 1900);
 }
 
 function postAction(): void {
   if (state.level > lastLevel) {
+    playLevelUp();
+    celebrateLevel(state.level);
     dialogue.say(SABA_MOISHE, lines.levelUp());
     lastLevel = state.level;
   }
@@ -327,6 +333,7 @@ function setViewing(n: Neighbor | null): void {
 
 function handleNeighborTap(col: number, row: number): void {
   const farm = viewing!.farm;
+  if (col < 0 || row < 0 || col >= farm.cols || row >= farm.rows) return;
   const now = Date.now();
   const plot = farm.plots[col + row * farm.cols];
   const obj = farm.objects.find((o) => o.col === col && o.row === row);
@@ -382,6 +389,7 @@ function handleTap(col: number, row: number): void {
     handleNeighborTap(col, row);
     return;
   }
+  if (col < 0 || row < 0 || col >= state.cols || row >= state.rows) return;
   const now = Date.now();
   if (pendingItem) {
     const placedId = pendingItem;
@@ -406,6 +414,7 @@ function handleTap(col: number, row: number): void {
         const r = plant(state, col, row, cropId, Date.now());
         hud.toast(r.message ?? 'Planted!');
         if (r.ok) {
+          playPlant();
           dialogue.say(SABA_MOISHE, lines.plant());
           recordTask(state.quests, 'plant', cropId);
           advanceTutorial();
@@ -431,6 +440,7 @@ function handleTap(col: number, row: number): void {
           const r = harvest(state, col, row, now);
           hud.toast(r.ok ? `Harvested! +${crop.sell}\u20aa` : (r.message ?? 'Error'));
           if (r.ok) {
+            playHarvest();
             dialogue.say(SABA_MOISHE, lines.harvest());
             recordTask(state.quests, 'harvest', plot.cropId);
             advanceTutorial();
@@ -458,6 +468,7 @@ function handleTap(col: number, row: number): void {
           const r = harvestObject(state, obj.id, now);
           hud.toast(r.ok ? `${item.product} collected! +${item.yieldCoins}\u20aa` : (r.message ?? 'Error'));
           if (r.ok) {
+            playHarvest();
             dialogue.say(SABA_MOISHE, lines.harvest());
             recordTask(state.quests, 'harvestObject', obj.itemId);
             finishAction();
@@ -476,6 +487,7 @@ function handleTap(col: number, row: number): void {
     const r = plow(state, col, row);
     hud.toast(r.message ?? 'Plowed. (+1 XP)');
     if (!r.ok) {
+      playError();
       dialogue.say(SABA_MOISHE, lines.poor());
     } else {
       recordTask(state.quests, 'plow');
@@ -622,5 +634,7 @@ if ('serviceWorker' in navigator) {
     });
   });
 }
+
+window.addEventListener('pointerdown', () => unlock(), { once: true });
 
 void input;

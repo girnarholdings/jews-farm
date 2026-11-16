@@ -17,10 +17,6 @@ function farm(cols: number, rows: number): FarmState {
     sela: 0,
     xp: 0,
     level: 1,
-    energy: 0,
-    maxEnergy: 0,
-    inventory: {},
-    lastSeen: 0,
     quests: { completed: [], progress: {} },
     stats: { plows: 0, plants: 0, harvests: 0, objects: 0, coinsEarned: 0 },
     ribbons: [],
@@ -37,7 +33,7 @@ function plot(cropId: string, plantedAt: number): Plot {
 }
 
 function obj(id: number, itemId: string, col: number, row: number, plantedAt: number) {
-  return { id, itemId, col, row, plantedAt, state: 'growing' as const };
+  return { id, itemId, col, row, plantedAt };
 }
 
 /** Static NPC farms. Their crops grow over the session via plantedAt timestamps. */

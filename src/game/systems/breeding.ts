@@ -46,7 +46,6 @@ export function collectLamb(s: FarmState, pen: PlacedObject, now: number): boole
     col: tile.col,
     row: tile.row,
     plantedAt: now,
-    state: 'growing',
     variant,
     pattern,
   });

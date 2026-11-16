@@ -37,9 +37,7 @@ export function plant(
   const crop = CROPS[cropId];
   if (!crop) return { ok: false, message: 'Unknown crop' };
   if (s.level < crop.unlockLevel) return { ok: false, message: 'Reach a higher level' };
-  const affordable = crop.premium
-    ? spendSela(s, crop.seedCost)
-    : spendCoins(s, crop.seedCost);
+  const affordable = spendCoins(s, crop.seedCost);
   if (!affordable) return { ok: false, message: 'Not enough coins' };
   plot.state = 'planted';
   plot.cropId = cropId;
@@ -78,10 +76,11 @@ export function placeObject(s: FarmState, itemId: string, col: number, row: numb
   if (!item) return { ok: false, message: 'Unknown item' };
   if (s.level < item.unlockLevel) return { ok: false, message: 'Reach a higher level' };
   if (s.plots[col + row * s.cols]) return { ok: false, message: 'Occupied' };
+  if (s.objects.some((o) => o.col === col && o.row === row)) return { ok: false, message: 'Occupied' };
   const affordable = item.selaCost > 0
     ? spendSela(s, item.selaCost)
     : spendCoins(s, item.cost);
-  if (!affordable) return { ok: false, message: 'Not enough coins' };
+  if (!affordable) return { ok: false, message: item.selaCost > 0 ? 'Not enough Sela' : 'Not enough coins' };
   let nextId = 1;
   for (const o of s.objects) if (o.id >= nextId) nextId = o.id + 1;
   s.objects.push({
@@ -90,7 +89,6 @@ export function placeObject(s: FarmState, itemId: string, col: number, row: numb
     col,
     row,
     plantedAt: now,
-    state: 'growing',
   });
   addXp(s, item.xp);
   s.stats.objects++;
@@ -106,7 +104,6 @@ export function harvestObject(s: FarmState, id: number, now: number): ActionResu
   addCoins(s, item.yieldCoins);
   s.stats.harvests++;
   obj.plantedAt = now; // reset growth cycle
-  obj.state = 'growing';
   return { ok: true };
 }
 

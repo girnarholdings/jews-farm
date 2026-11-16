@@ -145,7 +145,7 @@ export class Hud {
         btn.classList.add('locked');
         btn.innerHTML = `<span class="sc-name">${it.name}</span><span class="sc-lock">Lv ${it.unlockLevel}</span>`;
       } else {
-        btn.innerHTML = `<span class="sc-name">${it.name} <small>${it.hebrew}</small></span><span class="sc-cost">${it.cost}₪</span><span class="sc-sell">${it.yieldCoins}₪</span>`;
+        btn.innerHTML = `<span class="sc-name">${it.name} <small>${it.hebrew}</small></span><span class="sc-cost">${it.selaCost > 0 ? it.selaCost + ' Sela' : it.cost + '₪'}</span><span class="sc-sell">${it.yieldCoins}₪</span>`;
         btn.addEventListener('click', () => {
           this.hideModal();
           onPick(it.id);
