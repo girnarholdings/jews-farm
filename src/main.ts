@@ -540,4 +540,12 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') save();
 });
 
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      // dev (http) or unsupported — offline install simply unavailable
+    });
+  });
+}
+
 void input;
