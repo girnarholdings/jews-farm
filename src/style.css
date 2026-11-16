@@ -409,6 +409,35 @@ canvas {
   height: 36px;
 }
 
+#store-btn,
+#neighbors-btn,
+#expand-btn,
+#reset-btn,
+#back-btn,
+#quest-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#store-btn svg,
+#neighbors-btn svg,
+#expand-btn svg,
+#reset-btn svg,
+#back-btn svg,
+#quest-chip svg {
+  flex: none;
+}
+
+#sound-btn,
+#help-btn,
+#modal-close,
+#qm-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .sc-stars {
   color: #d4a017;
   letter-spacing: 1px;

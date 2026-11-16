@@ -1,6 +1,7 @@
 import type { FarmState } from '../game/types';
 import { currentQuest, questProgress } from '../game/systems/quests';
 import { QUESTS } from '../game/data/quests';
+import { icon } from './icons';
 
 export class QuestPanel {
   private chip: HTMLElement;
@@ -19,10 +20,11 @@ export class QuestPanel {
     this.modal.className = 'hidden';
     this.modal.innerHTML = `
       <div class="qm-card">
-        <div class="qm-head"><span id="qm-title"></span><button id="qm-close">✕</button></div>
+        <div class="qm-head"><span id="qm-title"></span><button id="qm-close"></button></div>
         <div class="qm-body" id="qm-body"></div>
       </div>`;
     container.appendChild(this.modal);
+    this.modal.querySelector('#qm-close')!.innerHTML = icon('close', 16);
     this.modal.querySelector('#qm-close')!.addEventListener('click', () => this.close());
     this.modal.addEventListener('click', (e) => {
       if (e.target === this.modal) this.close();
@@ -34,13 +36,13 @@ export class QuestPanel {
     this.state = s;
     const q = currentQuest(s.quests);
     if (!q) {
-      this.chip.textContent = '📜 All quests done \u2014 kol hakavod!';
+      this.chip.innerHTML = `${icon('quest')}<span>All quests done \u2014 kol hakavod!</span>`;
       return;
     }
     const prog = questProgress(s.quests, q);
     const done = q.tasks.reduce((n, t, i) => n + Math.min(prog[i] ?? 0, t.total), 0);
     const total = q.tasks.reduce((n, t) => n + t.total, 0);
-    this.chip.textContent = `📜 ${q.name} \u00b7 ${done}/${total}`;
+    this.chip.innerHTML = `${icon('quest')}<span>${q.name} \u00b7 ${done}/${total}</span>`;
   }
 
   private open(): void {

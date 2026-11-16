@@ -1,6 +1,7 @@
 import type { CropDef, FarmState, ItemDef } from '../game/types';
 import { xpForLevel, MAX_LEVEL } from '../game/data/levels';
 import { masteryStars } from '../game/systems/mastery';
+import { icon } from './icons';
 
 export class Hud {
   private levelEl: HTMLElement;
@@ -38,10 +39,11 @@ export class Hud {
     this.modalEl.className = 'hidden';
     this.modalEl.innerHTML = `
       <div class="modal-card">
-        <div class="modal-head"><span id="modal-title"></span><button id="modal-close">✕</button></div>
+        <div class="modal-head"><span id="modal-title"></span><button id="modal-close"></button></div>
         <div class="modal-body" id="modal-body"></div>
       </div>`;
     container.appendChild(this.modalEl);
+    this.modalEl.querySelector('#modal-close')!.innerHTML = icon('close', 16);
     this.modalEl.querySelector('#modal-close')!.addEventListener('click', () => this.hideModal());
     this.modalEl.addEventListener('click', (e) => {
       if (e.target === this.modalEl) this.hideModal();

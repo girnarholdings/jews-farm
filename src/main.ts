@@ -1,6 +1,7 @@
 import './style.css';
 import { Renderer } from './render/renderer';
 import { CROP_COLORS } from './render/palette';
+import { icon } from './ui/icons';
 import { Input } from './core/input';
 import type { FarmState, PlacedObject } from './game/types';
 import { CROPS, unlockedCrops } from './game/data/crops';
@@ -104,7 +105,7 @@ function save(): void {
 function celebrateLevel(level: number): void {
   const el = document.createElement('div');
   el.id = 'levelup';
-  el.textContent = `\u2B50 LEVEL ${level}! \u2B50`;
+  el.textContent = `LEVEL ${level}!`;
   document.body.appendChild(el);
   window.setTimeout(() => el.remove(), 1900);
 }
@@ -157,7 +158,7 @@ function showBreedingModal(pen: PlacedObject): void {
     return;
   }
   if (pen.breeding && now >= pen.breeding) {
-    hud.modal('Sheep Pen', [['A lamb is ready!', '\ud83d\udc11']], [
+    hud.modal('Sheep Pen', [['A lamb is ready!', '']], [
       {
         label: 'Collect Lamb',
         primary: true,
@@ -295,7 +296,7 @@ function showNeighborsModal(): void {
 }
 
 const TUTORIAL_TEXT = [
-  '\u{1F44B} Shalom! Tap an empty grass tile to plow it.',
+  'Shalom! Tap an empty grass tile to plow it.',
   'Now tap the plowed plot to plant a seed.',
   'Your crop is growing \u2014 tap it when it\u2019s ready to harvest.',
 ];
@@ -670,7 +671,7 @@ const input = new Input(renderer.canvas, renderer, {
 
 const storeBtn = document.createElement('button');
 storeBtn.id = 'store-btn';
-storeBtn.textContent = '🛒 Shuk';
+storeBtn.innerHTML = `${icon('cart')}<span>Shuk</span>`;
 storeBtn.addEventListener('click', () => {
   hud.showStore(itemList('tree'), itemList('animal'), itemList('decor'), itemList('building'), state.level, (id) => {
     pendingItem = id;
@@ -681,13 +682,13 @@ app.appendChild(storeBtn);
 
 const neighborsBtn = document.createElement('button');
 neighborsBtn.id = 'neighbors-btn';
-neighborsBtn.textContent = '👥 Neighbors';
+neighborsBtn.innerHTML = `${icon('people')}<span>Neighbors</span>`;
 neighborsBtn.addEventListener('click', showNeighborsModal);
 app.appendChild(neighborsBtn);
 
 const backBtn = document.createElement('button');
 backBtn.id = 'back-btn';
-backBtn.textContent = '← Back to my farm';
+backBtn.innerHTML = `${icon('back')}<span>Back to my farm</span>`;
 backBtn.style.display = 'none';
 backBtn.addEventListener('click', () => {
   setViewing(null);
@@ -697,7 +698,7 @@ app.appendChild(backBtn);
 
 const resetBtn = document.createElement('button');
 resetBtn.id = 'reset-btn';
-resetBtn.textContent = 'Reset';
+resetBtn.innerHTML = `${icon('reset')}<span>Reset</span>`;
 resetBtn.addEventListener('click', () => {
   if (window.confirm('Start your farm over?')) {
     clearSave();
@@ -708,7 +709,7 @@ app.appendChild(resetBtn);
 
 const expandBtn = document.createElement('button');
 expandBtn.id = 'expand-btn';
-expandBtn.textContent = '⛰️ Expand';
+expandBtn.innerHTML = `${icon('expand')}<span>Expand</span>`;
 expandBtn.addEventListener('click', () => {
   const cost = expansionCost(state);
   const size = state.cols;
@@ -741,15 +742,15 @@ app.appendChild(expandBtn);
 
 const soundBtn = document.createElement('button');
 soundBtn.id = 'sound-btn';
-soundBtn.textContent = isMuted() ? '\u{1F507}' : '\u{1F50A}';
+soundBtn.innerHTML = isMuted() ? icon('soundOff', 18) : icon('soundOn', 18);
 soundBtn.addEventListener('click', () => {
-  soundBtn.textContent = toggleMute() ? '\u{1F507}' : '\u{1F50A}';
+  soundBtn.innerHTML = toggleMute() ? icon('soundOff', 18) : icon('soundOn', 18);
 });
 app.appendChild(soundBtn);
 
 const helpBtn = document.createElement('button');
 helpBtn.id = 'help-btn';
-helpBtn.textContent = '?';
+helpBtn.innerHTML = icon('help', 18);
 helpBtn.addEventListener('click', showTipModal);
 app.appendChild(helpBtn);
 
